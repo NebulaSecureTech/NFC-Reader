@@ -1,83 +1,82 @@
-# NFC Reader - Vue 3, statico, Material Design
+# NFC Reader · PWA mobile-first (v1.1.0)
 
-Lettore NFC continuo per GitHub Pages. Non richiede backend, npm, Vite o database.
-Tutto l'elenco dei tag viene salvato nel browser (localStorage), senza inviare
-UID o contenuti NFC a un server.
+Web app statica basata su **Vue 3**, con stile Material Design, pensata prima di tutto per smartphone Android. Legge tag NFC compatibili NDEF in **scansione continua**, conserva l'elenco nel browser ed esporta CSV o TXT. Nessun account, backend, cookie di tracciamento, richiesta a servizi esterni o processo di compilazione.
 
-## Pubblicazione su GitHub Pages
+## Pubblicazione: GitHub Pages
 
-1. Crea un repository GitHub (per esempio `nfc-reader`).
-2. Carica nella radice del repository i file di questa cartella:
-   `index.html`, `app.mjs`, `core.mjs`, `styles.css`, `favicon.svg`, `.nojekyll`.
-   Puoi caricare anche il README e la cartella `tests`.
-3. Vai in **Settings > Pages**.
-4. Imposta **Source: Deploy from a branch**, branch **main**, cartella **/(root)**.
-5. Salva e apri `https://TUO-USERNAME.github.io/nfc-reader/`.
+1. Crea un repository GitHub (ad esempio `nfc-reader`).
+2. Estrai lo ZIP **GitHub-Pages** e carica il contenuto (non la cartella esterna) nella radice del repository: `index.html`, `sw.js`, `manifest.webmanifest`, `assets/` e `.nojekyll`.
+3. Vai a **Settings → Pages → Build and deployment**.
+4. Scegli **Deploy from a branch**, branch `main`, cartella `/(root)` e salva.
+5. Apri il sito HTTPS indicato da GitHub. Il nome del repository non richiede modifiche: tutti i percorsi sono relativi.
+6. Dal menu di Chrome Android seleziona **Installa app** / **Aggiungi a schermata Home**. Dove Chrome offre il prompt diretto, trovi il pulsante nelle impostazioni.
 
-Non serve configurare il nome del repository: tutti i collegamenti sono relativi.
+Non serve installare Node.js, Vite o fare `npm run build`: la libreria Vue è già inclusa localmente e il browser esegue tutto direttamente.
 
 ## Come si usa
 
-- Apri il sito su **Google Chrome per Android**, con NFC attivo.
-- Premi **Avvia scansione** e accetta il permesso NFC.
-- Avvicina un tag NFC alla zona NFC del telefono.
-- Avvicina i tag successivi: la scansione non si ferma dopo il primo.
-- Attiva o disattiva **Ignora duplicati**.
-- Scegli **Numero progressivo** e scarica CSV oppure TXT.
-- Il contenuto rimane sul dispositivo anche dopo un aggiornamento della pagina.
+- Apri la PWA in **Chrome su Android**, con **NFC attivo**.
+- Tocca **Avvia scansione** e consenti l'accesso, se richiesto.
+- Avvicina più tag uno dopo l'altro. La scansione rimane attiva fino a **Ferma scansione** (o alla chiusura della pagina).
+- I tag vengono aggiunti all'elenco, con UID quando disponibile, contenuto NDEF e ora.
+- Usa la ricerca, la copia UID, l'eliminazione di un singolo tag o la cancellazione di tutti i dati con conferma.
+- Premi **CSV** o **TXT** nella barra inferiore per esportare tutto l'elenco (non solo i risultati filtrati).
+- Il formato CSV usa UTF-8 con BOM, `;` come separatore per Excel in italiano, e contiene UID, contenuto e data/ora, con colonna **Numero** opzionale. Il TXT esporta gli UID uno per riga, con o senza progressivo. In assenza dell'UID esporta il contenuto leggibile come alternativa.
 
-### File di esportazione
+### Menu impostazioni (⚙)
 
-- **CSV** UTF-8 con BOM e separatore `;` compatibile con Excel italiano.
-  Colonne: Numero (opzionale), UID, Contenuto NDEF, Data e ora.
-- **TXT** con un UID per riga (oppure `1. UID`, `2. UID`, ...).
-  Se il browser non fornisce l'UID viene esportato il contenuto NDEF come fallback.
-- Si esporta sempre **l'intero elenco** nell'ordine in cui e' stato acquisito,
-  anche se e' attivo un filtro di ricerca.
-- Nessuna dipendenza da server per le operazioni NFC o l'esportazione.
+- **Suono alla lettura**: beep sintetizzato sul telefono per ogni *nuovo tag registrato* (predefinito: attivo). Il browser può limitare l'audio a seconda del dispositivo e del volume.
+- **Vibrazione**: vibrazione breve ad ogni registrazione, se supportata (predefinita: attiva).
+- **Ignora duplicati**: uno per UID, o per contenuto se UID assente (predefinito: attivo). Anche con il filtro disattivo, un anti-rimbalzo di 1,4 secondi evita raffiche quando il tag rimane appoggiato al telefono.
+- **Schermo sempre acceso**: prova a usare la Screen Wake Lock API mentre la scansione è attiva (predefinito: disattivo); non garantito su tutti i dispositivi.
+- **Numero progressivo**: aggiunge o rimuove la numerazione da entrambi i formati esportati (predefinito: attivo).
+- **Tema**: sistema / chiaro / scuro.
+- **Installa app**: collegamento al prompt quando Chrome lo mette a disposizione.
 
-## Requisiti e limiti
+Le impostazioni sono salvate nel browser. Le letture della versione precedente v1.0.0 sono mantenute: vengono usate le stesse chiavi `localStorage`.
 
-- Web NFC e' supportato soprattutto da Chrome su Android, non dal normale
-  browser desktop e non da Safari su iPhone.
-- Richiede **HTTPS** (GitHub Pages lo fornisce), NFC attivo, browser in primo
-  piano e autorizzazione esplicita al primo utilizzo.
-- Web NFC non e' un driver per lettori NFC USB e non legge tutti i protocolli
-  / tag proprietari. I tag devono essere compatibili **NDEF**.
-- `event.serialNumber` puo' essere vuoto: in quel caso e' comunque possibile
-  acquisire il contenuto NDEF (se presente).
-- L'elenco e' specifico per browser, dispositivo e dominio. Cancellare i dati
-  del sito o usare un altro browser puo' eliminarlo.
-- Massimo 5000 righe per limitare l'uso di localStorage.
-- Per ridurre letture ripetute involontarie esiste una finestra anti-rimbalzo
-  di 1,4 secondi. Se disabiliti il filtro duplicati, puoi riavvicinare un tag
-  dopo questo intervallo per registrarne una nuova lettura.
-- **La libreria Vue 3 e' caricata da un CDN**. Serve Internet per il primo
-  caricamento (o una copia gia' in cache); i dati NFC non vengono inviati al CDN.
-  Se desideri eliminare anche questa richiesta esterna, puoi scaricare la
-  distribuzione Vue `vue.global.prod.js` e aggiornare il percorso dello script
-  in `index.html`.
+## Requisiti e limitazioni
 
-## Sviluppo locale
+- L'API **Web NFC** non è universalmente disponibile: in pratica serve **Google Chrome su Android**, NFC hardware abilitato e **HTTPS** (fornito da GitHub Pages).
+- Web NFC legge **NDEF**, non tutti i tag NFC. Non può leggere a basso livello MIFARE Classic, tessere protette, molti badge aziendali, lettori USB desktop o emulare carte.
+- Il campo UID (`event.serialNumber`) può essere assente. Il sito non inventa un UID: salva il contenuto NDEF, quando leggibile.
+- La scansione funziona con pagina **visibile** e schermo sbloccato. Le operazioni NFC si sospendono quando il browser passa in background o si spegne il display.
+- La PWA può essere aperta **offline dopo il primo caricamento riuscito** grazie al Service Worker. Ma NFC ha comunque bisogno delle autorizzazioni del browser; l'installazione/offline non estende il supporto Web NFC.
+- Tag e impostazioni vengono memorizzati solo su quel browser/dispositivo (`localStorage`). Se cancelli i dati del sito potresti perdere le letture; esportale periodicamente. Limite di 5.000 letture salvate.
+- La libreria Vue locale è v3.5.13, con licenza MIT. Non vengono scaricati font, icone, audio o script da terze parti.
 
-Avvia un qualsiasi server HTTP statico nella cartella, ad esempio:
+## Struttura semplice
 
-```bash
-python -m http.server 8000
+```
+NFC-Reader/
+├── index.html                 # Interfaccia Vue e layout
+├── manifest.webmanifest       # Installazione PWA
+├── sw.js                      # Cache offline
+├── .nojekyll                  # Compatibilità GitHub Pages
+├── assets/
+│   ├── css/style.css          # Material, responsive, temi
+│   ├── js/app.mjs             # Vue, lettura NFC, salvataggio, preferenze
+│   ├── js/core.mjs            # Parsing NDEF ed esportazioni
+│   ├── js/sound.mjs           # Beep con Web Audio API
+│   ├── vendor/vue.global.js   # Vue locale (MIT)
+│   └── icons/                 # Icone PWA e favicon
+└── README.md
 ```
 
-Apri `http://localhost:8000` su PC per provare l'interfaccia (ma non NFC).
-Per leggere realmente NFC, pubblica su HTTPS e apri Chrome da Android.
-
-## Test
-
-Le funzioni di lettura e generazione file sono in `core.mjs`.
+Nello ZIP **Sorgenti** è inclusa anche `tests/`. Per i test (opzionali) serve Node.js:
 
 ```bash
-node --test tests/core.test.mjs
+node --test tests/*.test.mjs
 ```
 
-## Licenza
+## Personalizzazione
 
-Progetto demo personalizzabile. Vue 3 e' distribuito separatamente sotto
-licenza MIT: https://github.com/vuejs/core/blob/main/LICENSE
+- Colori, tipografia e dimensioni: `assets/css/style.css`, variabili `:root`.
+- Contenuti e pulsanti della web app: `index.html`.
+- Logica di scansione, filtri e salvataggio: `assets/js/app.mjs`.
+- CSV e TXT: `assets/js/core.mjs`.
+- Cambiamenti a file pubblicati: **aggiorna la costante `CACHE` in `sw.js`** per invalidare la cache offline delle versioni precedenti.
+
+## Note tecniche
+
+Nella PWA non esiste un backend, né vengono inviati i dati delle letture all'esterno. I file CSV e TXT vengono generati con un Blob nel browser. L'app conserva un registro cronologico; la visualizzazione è in ordine inverso (più recente in alto), mentre l'esportazione rispetta l'ordine originale.
