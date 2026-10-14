@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="description" content="Lettore NFC continuo per Android. Registra UID e dati NDEF, gestisci i duplicati ed esporta CSV e TXT. Tutto in locale.">
+  <meta name="color-scheme" content="light dark">
+  <title>NFC Reader - Scansione continua</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script>
+    try {
+      const saved = JSON.parse(localStorage.getItem('nfc-reader.settings.v1') || '{}');
+      document.documentElement.dataset.theme = saved.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    } catch (_) { document.documentElement.dataset.theme = 'light'; }
+  </script>
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-nfc" viewBox="0 0 24 24"><path d="M4 19V7c0-1.1.9-2 2-2h12c1.1 0 2 .9 2 2v12"/><path d="M8 15v-4c0-1.7 1.3-3 3-3s3 1.3 3 3v6"/><path d="M11 12v6M17 9v9M4 19h16"/></symbol>
+    <symbol id="i-waves" viewBox="0 0 24 24"><path d="M4 8a11 11 0 0 1 0 8M8 5a15 15 0 0 1 0 14M12 2a19 19 0 0 1 0 20M16 5a15 15 0 0 0 0 14M20 8a11 11 0 0 0 0 8"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.4"/><path d="M10 18.5h4M10 5.5h4"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M8 3H6a3 3 0 0 0-3 3v2M16 3h2a3 3 0 0 1 3 3v2M3 16v2a3 3 0 0 0 3 3h2M21 16v2a3 3 0 0 1-3 3h-2M4 12h16"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M12.5 3H5a2 2 0 0 0-2 2v7.5a2 2 0 0 0 .6 1.4l7.5 7.5a2 2 0 0 0 2.8 0l7.5-7.5a2 2 0 0 0 0-2.8l-7.5-7.5a2 2 0 0 0-1.4-.6Z"/><circle cx="8" cy="8" r="1.6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 2 8 4v5c0 5.2-3 8.6-8 11-5-2.4-8-5.8-8-11V6l8-4Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.2A8.7 8.7 0 0 1 9.8 3.5a8.9 8.9 0 1 0 10.7 10.7Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-9 0 1 14h10l1-14M10 11v6m4-6v6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m5 5 14 14M19 5 5 19"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 2h7l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"/><path d="M14 2v6h5M8 13h8m-8 4h8"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12M3 6h2M3 12h2M3 18h2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v5m0 3h.01"/></symbol>
+  </svg>
+
+  <div id="app" v-cloak>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <div class="brand" aria-label="NFC Reader">
+          <span class="brand-mark"><svg class="icon"><use href="#i-nfc"/></svg></span>
+          <div class="brand-titles"><strong>NFC Reader</strong><span>Tag collection tool</span></div>
+        </div>
+        <div class="top-actions">
+          <div class="privacy-pill"><svg class="icon icon-sm"><use href="#i-shield"/></svg><span>Dati solo sul dispositivo</span></div>
+          <button type="button" class="icon-button theme-button" :aria-label="theme === 'light' ? 'Attiva tema scuro' : 'Attiva tema chiaro'" :title="theme === 'light' ? 'Tema scuro' : 'Tema chiaro'" @click="toggleTheme">
+            <svg v-if="theme === 'light'" class="icon"><use href="#i-moon"/></svg>
+            <svg v-else class="icon"><use href="#i-sun"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container main-content">
+      <section class="page-heading">
+        <div>
+          <div class="eyebrow"><span class="eyebrow-line"></span> WEB NFC UTILITY</div>
+          <h1>Leggi. Raccogli. Esporta.</h1>
+          <p>Avvicina i tag NFC in sequenza e crea il tuo elenco in pochi secondi.</p>
+        </div>
+        <div class="capability" :class="{'capability-good': supported, 'capability-warn': !supported}">
+          <span class="capability-light"></span>{{ supportLabel }}
+        </div>
+      </section>
+
+      <div class="workspace">
+        <aside class="left-stack">
+          <section class="panel scanner-panel" :class="{'scanner-active': isRunning}">
+            <div class="panel-title-row">
+              <div class="section-title">
+                <span class="section-icon purple"><svg class="icon icon-sm"><use href="#i-scan"/></svg></span>
+                <h2>Scansione continua</h2>
+              </div>
+              <span class="scan-status" :class="{'on': scanState === 'active', 'starting': scanState === 'starting'}"><i></i>{{ statusLabel }}</span>
+            </div>
+
+            <div class="scanner-art" :class="{'art-active': isRunning}" aria-hidden="true">
+              <span class="art-glow"></span>
+              <span class="art-orbit orbit-outer"></span>
+              <span class="art-orbit orbit-inner"></span>
+              <div class="device-disc"><svg class="icon device-icon"><use href="#i-phone"/></svg><span class="device-mini-wave"></span></div>
+              <span class="art-spark spark-one"></span><span class="art-spark spark-two"></span>
+            </div>
+
+            <div class="scanner-copy" role="status" aria-live="polite">
+              <h3>{{ scanTitle }}</h3>
+              <p>{{ scanSubtitle }}</p>
+            </div>
+
+            <div v-if="lastEntry && supported" class="last-scan">
+              <span class="last-scan-icon"><svg class="icon icon-sm"><use href="#i-check"/></svg></span>
+              <div class="last-scan-info"><small>Ultimo tag registrato</small><strong :title="lastEntry.uid || lastEntry.content">{{ lastEntry.uid || 'UID non disponibile' }}</strong></div>
+              <span class="last-scan-time">{{ formattedTime(lastEntry.timestamp) }}</span>
+            </div>
+
+            <button type="button" class="btn scan-button" :class="isRunning ? 'btn-stop' : 'btn-primary'" :disabled="!supported" @click="toggleScan">
+              <svg class="icon"><use :href="isRunning ? '#i-stop' : '#i-scan'"/></svg>
+              {{ isRunning ? 'Ferma scansione' : 'Avvia scansione' }}
+            </button>
+            <div class="scan-footnote"><svg class="icon icon-sm"><use href="#i-info"/></svg>
+              <span>{{ isRunning ? 'La lettura resta attiva fino allo stop. Mantieni aperta questa pagina.' : 'Il browser richiede il tuo consenso prima di leggere i tag.' }}</span>
+            </div>
+          </section>
+
+          <section class="panel preferences-panel">
+            <div class="section-title">
+              <span class="section-icon neutral"><svg class="icon icon-sm"><use href="#i-settings"/></svg></span>
+              <h2>Preferenze</h2>
+            </div>
+            <label class="setting-row">
+              <span class="setting-copy"><strong>Ignora duplicati</strong><small>Un solo elemento per UID. Se manca, viene usato il contenuto.</small></span>
+              <input class="switch-input" type="checkbox" v-model="ignoreDuplicates" @change="savePreferences">
+              <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            </label>
+            <div class="setting-divider"></div>
+            <label class="setting-row">
+              <span class="setting-copy"><strong>Numero progressivo</strong><small>Includi la numerazione nelle esportazioni CSV e TXT.</small></span>
+              <input class="switch-input" type="checkbox" v-model="includeNumber" @change="savePreferences">
+              <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+            </label>
+          </section>
+          <div class="compat-note" :class="{'compat-note-warning': !supported}">
+            <svg class="icon icon-sm"><use :href="supported ? '#i-info' : '#i-alert'"/></svg>
+            <p>Web NFC funziona su Chrome per Android con NFC attivo e HTTPS. Legge tag compatibili NDEF; l'UID potrebbe non essere disponibile.</p>
+          </div>
+        </aside>
+
+        <section class="panel list-panel" aria-label="Elenco tag NFC">
+          <div class="list-top">
+            <div>
+              <div class="section-title list-title"><span class="section-icon blue"><svg class="icon icon-sm"><use href="#i-list"/></svg></span><h2>Tag acquisiti</h2></div>
+              <p>Il registro si salva automaticamente su questo dispositivo.</p>
+            </div>
+            <div class="counter-wrap"><span class="main-counter">{{ entries.length }}</span><span class="counter-label">{{ entries.length === 1 ? 'tag salvato' : 'tag salvati' }}</span></div>
+          </div>
+
+          <div class="list-controls">
+            <label class="search-field" :class="{'search-disabled': !entries.length}">
+              <svg class="icon icon-sm"><use href="#i-search"/></svg>
+              <input v-model="search" @input="visibleLimit = 70" type="search" placeholder="Cerca UID o contenuto..." aria-label="Cerca tra i tag" :disabled="!entries.length" autocomplete="off">
+            </label>
+            <button type="button" class="btn-icon-soft" title="Svuota elenco" aria-label="Svuota tutto l'elenco" :disabled="!entries.length" @click="askClear">
+              <svg class="icon"><use href="#i-trash"/></svg>
+            </button>
+          </div>
+
+          <div v-if="entries.length === 0" class="empty-state">
+            <div class="empty-illustration" aria-hidden="true"><div class="empty-orbit"></div><svg class="icon"><use href="#i-tag"/></svg><span class="empty-dot"></span></div>
+            <h3>Qui appariranno i tuoi tag</h3>
+            <p>Avvia la lettura e avvicina un tag NFC allo smartphone. Ogni nuova acquisizione compare qui automaticamente.</p>
+          </div>
+          <div v-else class="results-area">
+            <div class="list-column-header" aria-hidden="true"><span>N.</span><span>UID / TAG</span><span>CONTENUTO</span><span>ORA</span><span>AZIONI</span></div>
+            <div v-if="!filteredEntries.length" class="no-matches">
+              <svg class="icon"><use href="#i-search"/></svg><strong>Nessun risultato</strong><span>Prova con un altro UID o testo.</span>
+            </div>
+            <div v-else class="tag-results">
+              <div class="tag-row" v-for="item in visibleEntries" :key="item.id">
+                <span class="tag-number">{{ item.number }}</span>
+                <div class="tag-identity">
+                  <span class="tag-uid" :title="item.uid || 'UID non disponibile'">{{ item.uid || 'UID non disponibile' }}</span>
+                  <span class="tag-mobile-content">{{ item.content || 'Nessun contenuto NDEF' }}</span>
+                </div>
+                <span class="tag-content" :title="item.content || ''">{{ item.content || '—' }}</span>
+                <time class="tag-time" :datetime="item.timestamp">{{ formattedTime(item.timestamp) }}</time>
+                <span class="tag-actions">
+                  <button type="button" class="row-icon" :disabled="!item.uid" :aria-label="'Copia UID tag ' + item.number" title="Copia UID" @click="copyUid(item)"><svg class="icon icon-sm"><use href="#i-copy"/></svg></button>
+                  <button type="button" class="row-icon row-remove" :aria-label="'Rimuovi tag ' + item.number" title="Rimuovi" @click="removeEntry(item.id)"><svg class="icon icon-sm"><use href="#i-close"/></svg></button>
+                </span>
+              </div>
+              <button v-if="moreToShow" class="show-more" type="button" @click="visibleLimit += 70">Mostra altri tag ({{ filteredEntries.length - visibleLimit }}) <svg class="icon icon-sm"><use href="#i-arrow"/></svg></button>
+            </div>
+          </div>
+
+          <div class="export-footer">
+            <div class="export-copy"><span class="export-symbol"><svg class="icon"><use href="#i-download"/></svg></span><div><h3>Esporta elenco</h3><p>CSV completo oppure TXT con gli UID. {{ includeNumber ? 'Progressivo incluso.' : 'Senza numerazione.' }}</p></div></div>
+            <div class="export-actions">
+              <button type="button" class="btn btn-secondary" :disabled="!entries.length" @click="download('csv')"><svg class="icon icon-sm"><use href="#i-file"/></svg>CSV</button>
+              <button type="button" class="btn btn-primary" :disabled="!entries.length" @click="download('txt')"><svg class="icon icon-sm"><use href="#i-file"/></svg>TXT</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer class="page-footer"><span>Privacy by design: nessun account, nessun server, nessun invio dei tag.</span><span>NFC Reader <span class="footer-dot"></span> v1.0.0</span></footer>
+    </main>
+
+    <div v-if="showClearDialog" class="modal-backdrop" @click.self="showClearDialog = false">
+      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title" aria-describedby="clear-dialog-desc">
+        <div class="dialog-icon"><svg class="icon"><use href="#i-trash"/></svg></div>
+        <h2 id="clear-dialog-title">Svuotare l'elenco?</h2>
+        <p id="clear-dialog-desc">I {{ entries.length }} tag salvati verranno eliminati da questo dispositivo. Esportali prima, se ti servono.</p>
+        <div class="dialog-actions"><button type="button" class="btn btn-ghost" ref="clearCancel" @click="showClearDialog = false">Annulla</button><button type="button" class="btn btn-danger" @click="clearAll">Elimina tutti</button></div>
+      </section>
+    </div>
+    <transition name="toast"><div v-if="toastMessage" class="toast-message" :class="'toast-' + toastTone" role="status" aria-live="polite"><svg class="icon icon-sm"><use :href="toastTone === 'error' ? '#i-alert' : '#i-check'"/></svg><span>{{ toastMessage }}</span><button type="button" @click="toastMessage = ''" aria-label="Chiudi avviso"><svg class="icon icon-sm"><use href="#i-close"/></svg></button></div></transition>
+  </div>
+  <!-- Script in coda: la libreria Vue e' caricata prima dell'applicazione. -->
+  <script src="https://cdn.jsdelivr.net/npm/vue@3.5.44/dist/vue.global.prod.js"></script>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
