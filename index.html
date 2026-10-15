@@ -10,10 +10,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="NFC Reader">
   <title>NFC Reader</title>
-  <link rel="icon" href="./assets/icons/favicon.svg?v=1.8.3" type="image/svg+xml">
+  <link rel="icon" href="./assets/icons/favicon.svg?v=1.8.4" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="manifest" href="./manifest.webmanifest?v=1.8.3">
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.8.3">
+  <link rel="manifest" href="./manifest.webmanifest?v=1.8.4">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.8.4">
   <script>
     try {
       const settings = JSON.parse(localStorage.getItem('nfc-reader.settings.v1') || '{}');
@@ -105,24 +105,22 @@
 
         <section id="panel-writer" v-show="tab === 'writer'" :role="desktopLayout ? 'region' : 'tabpanel'" :aria-label="desktopLayout ? 'Scrittura tag NFC' : null" :aria-labelledby="desktopLayout ? null : 'tab-writer'" tabindex="-1" class="writer-panel">
           <div class="writer-top"><span class="eyebrow">SCRITTURA NDEF</span><span class="writer-state-chip" :class="{'busy': writeState === 'waiting', 'written': writeState === 'success'}"><span class="status-dot"></span>{{ writeState === 'waiting' ? 'In attesa tag' : writeState === 'success' ? 'Completata' : 'Pronto' }}</span></div>
-          <div class="writer-heading"><span class="writer-icon"><svg class="icon"><use href="#ico-pencil"/></svg></span><div><h1>Scrivi un tag</h1><p>Testo o collegamento URL in formato NDEF.</p></div></div>
+          <div class="writer-heading"><span class="writer-icon"><svg class="icon"><use href="#ico-pencil"/></svg></span><h1>Scrivi un tag</h1><button type="button" class="writer-help-button" aria-label="Informazioni sulla scrittura NFC" title="Come funziona la scrittura" @click="openDialog('write-help')">?</button></div>
           <div class="writer-form">
             <label class="writer-label">TIPO DI CONTENUTO</label>
             <div class="segmented writer-types" role="group" aria-label="Tipo di contenuto da scrivere"><button type="button" :disabled="writeState === 'waiting'" :aria-pressed="writeKind === 'text'" :class="{selected: writeKind === 'text'}" @click="chooseWriteKind('text')"><svg class="icon tiny"><use href="#ico-pencil"/></svg>Testo</button><button type="button" :disabled="writeState === 'waiting'" :aria-pressed="writeKind === 'url'" :class="{selected: writeKind === 'url'}" @click="chooseWriteKind('url')"><svg class="icon tiny"><use href="#ico-link"/></svg>URL</button></div>
             <label class="writer-label" for="write-value">{{ writeKind === 'url' ? 'INDIRIZZO WEB' : 'TESTO DA SCRIVERE' }}</label>
             <textarea v-if="writeKind === 'text'" id="write-value" class="writer-input writer-textarea" v-model="writeValue" :disabled="writeState === 'waiting'" @input="resetWriteApproval" maxlength="500" rows="4" placeholder="Inserisci il testo da memorizzare sul tag..."></textarea>
             <input v-else id="write-value" type="url" class="writer-input" v-model="writeValue" :disabled="writeState === 'waiting'" @input="resetWriteApproval" maxlength="500" placeholder="https://esempio.it" inputmode="url" autocapitalize="none" autocomplete="off" spellcheck="false">
-            <div class="writer-byte-info"><span>UTF-8 · {{ writeBytes }} byte di contenuto</span><span>{{ writeValue.length }} / 500</span></div>
-            <div class="writer-warning"><svg class="icon small"><use href="#ico-info"/></svg><p><strong>Attenzione: la scrittura sovrascrive i dati NDEF esistenti.</strong> Usa solo tag tuoi e compatibili, mai badge aziendali o carte di accesso. Su Classic 1K serve una precedente formattazione NDEF e i permessi di scrittura. La capienza varia per tag.</p></div>
-            <label class="writer-consent"><input type="checkbox" v-model="writeConfirmed" :disabled="writeState === 'waiting'"><span>Confermo di voler sostituire il contenuto del tag.</span></label>
+            <div class="writer-byte-info" :class="{'writer-byte-over': writeBytes > 250}"><span>{{ writeBytes }} / 250 byte</span></div>
+            <label class="writer-consent"><input type="checkbox" v-model="writeConfirmed" :disabled="writeState === 'waiting'"><span>Autorizzo la sovrascrittura</span></label>
             <div v-if="isDesktop" class="writer-device"><svg class="icon small"><use href="#ico-usb"/></svg>{{ connectedReaderLabel }}</div>
-            <div v-else-if="!webWriteSupported" class="writer-unavailable"><svg class="icon small"><use href="#ico-info"/></svg>Scrittura Web NFC disponibile su Chrome Android compatibile. Sul PC usa la versione Electron con lettore USB.</div>
+            <div v-else-if="!webWriteSupported" class="writer-unavailable"><svg class="icon small"><use href="#ico-info"/></svg>NFC non disponibile qui. Usa Chrome su Android o l’app Windows.</div>
           </div>
           <div class="writer-bottom">
             <p v-if="writeMessage" class="writer-message" :class="{'writer-error': writeState === 'error', 'writer-success': writeState === 'success'}" role="status" aria-live="polite">{{ writeMessage }}</p>
             <button v-if="writeState === 'waiting'" class="scan-btn stop-btn" type="button" @click="cancelWrite"><svg class="icon"><use href="#ico-stop"/></svg>Annulla scrittura</button>
             <button v-else class="scan-btn" type="button" :disabled="!canWrite" @click="startWrite"><svg class="icon"><use href="#ico-pencil"/></svg>Scrivi sul tag</button>
-            <p class="scan-hint">{{ isDesktop ? 'Dopo aver premuto Scrivi, avvicina un tag al lettore USB (entro 45 secondi).' : 'Dopo aver premuto Scrivi, avvicina il tag al retro del telefono.' }}</p>
           </div>
         </section>
 
@@ -164,7 +162,7 @@
 
     <dialog ref="dialog" class="app-dialog" :class="{'settings-dialog': modal === 'settings'}" aria-labelledby="dialog-title" @cancel.prevent="closeDialog" @click="onBackdrop" @keydown="onDialogKeydown">
       <div class="dialog-wrap">
-        <header class="dialog-heading"><h2 id="dialog-title">{{ {settings: 'Impostazioni', export: 'Esporta e condividi', detail: 'Dettaglio tag', delete: 'Eliminare questo tag?', clear: 'Svuotare lo storico?', repair: 'Recupera archivio'}[modal] || '' }}</h2><button type="button" class="icon-btn" aria-label="Chiudi finestra" @click="closeDialog"><svg class="icon"><use href="#ico-close"/></svg></button></header>
+        <header class="dialog-heading"><h2 id="dialog-title">{{ {settings: 'Impostazioni', export: 'Esporta e condividi', detail: 'Dettaglio tag', 'write-help': 'Informazioni sulla scrittura', delete: 'Eliminare questo tag?', clear: 'Svuotare lo storico?', repair: 'Recupera archivio'}[modal] || '' }}</h2><button type="button" class="icon-btn" aria-label="Chiudi finestra" @click="closeDialog"><svg class="icon"><use href="#ico-close"/></svg></button></header>
 
         <template v-if="modal === 'settings'">
           <div class="segmented settings-tabs" role="group" aria-label="Sezioni impostazioni"><button type="button" :aria-pressed="settingsTab === 'reading'" :class="{selected: settingsTab === 'reading'}" @click="settingsTab = 'reading'">Lettura</button><button type="button" :aria-pressed="settingsTab === 'app'" :class="{selected: settingsTab === 'app'}" @click="settingsTab = 'app'">App</button></div>
@@ -187,6 +185,15 @@
             </div>
           </div>
           <footer class="settings-footer"><span>NFC Reader</span><span>v{{ version }}</span></footer>
+        </template>
+
+        <template v-else-if="modal === 'write-help'">
+          <div class="dialog-content write-help-content">
+            <div class="write-help-item"><strong>Sovrascrittura</strong><p>I dati NDEF presenti sul tag saranno sostituiti.</p></div>
+            <div class="write-help-item"><strong>Tag compatibili</strong><p>Su Android, tag NDEF scrivibili. Su Windows, Type 2 oppure MIFARE Classic 1K già formattate NDEF e autorizzate.</p></div>
+            <div class="write-help-item"><strong>Prima di procedere</strong><p>Usa solo tag personali o di prova, non badge e carte di accesso. La capacità dipende dal tag.</p></div>
+          </div>
+          <footer class="dialog-actions write-help-actions"><button type="button" class="btn btn-primary" data-autofocus @click="closeDialog">Chiudi</button></footer>
         </template>
 
         <template v-else-if="modal === 'export'">
@@ -275,7 +282,7 @@
     <div v-if="toast && !modal" class="snackbar" :class="'toast-' + toast.tone" role="status" aria-live="polite"><svg class="icon small"><use :href="iconFor(toast.tone)"/></svg><span>{{ toast.text }}</span></div>
   </div>
   <noscript><p>Abilita JavaScript per usare NFC Reader.</p></noscript>
-  <script src="./assets/vendor/vue.global.js?v=1.8.3"></script>
-  <script type="module" src="./assets/js/app.mjs?v=1.8.3"></script>
+  <script src="./assets/vendor/vue.global.js?v=1.8.4"></script>
+  <script type="module" src="./assets/js/app.mjs?v=1.8.4"></script>
 </body>
 </html>

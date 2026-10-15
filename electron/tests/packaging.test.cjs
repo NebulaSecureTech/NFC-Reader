@@ -20,7 +20,7 @@ test('Windows runner builds bridge first, then portable and checks result',()=>{
  const compile=workflow.indexOf('Compila bridge WinSCard Windows');
  const packageStep=workflow.indexOf('Compila NFC Reader portable');
  assert.ok(compile>0&&packageStep>compile);
- assert.match(workflow,/NFC-Reader-Portable-1\.8\.3-x64\.exe/);
+ assert.match(workflow,/NFC-Reader-Portable-1\.8\.4-x64\.exe/);
  assert.doesNotMatch(workflow,/pcsc-mini|node-gyp|npm run rebuild/);
 });
 

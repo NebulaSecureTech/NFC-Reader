@@ -1,10 +1,10 @@
 import {
   MAX_ENTRIES, REPEAT_DELAY_MS, parseNfcReading, restoreEntries, normalizeUid,
   formattedTime, formattedShortDate, formattedTimestamp, exportCsv, exportTxt, nfcErrorMessage, shareTagText,
-} from './core.mjs?v=1.8.3';
-import {prepareAudio, playSound} from './sound.mjs?v=1.8.3';
+} from './core.mjs?v=1.8.4';
+import {prepareAudio, playSound} from './sound.mjs?v=1.8.4';
 
-const VERSION = '1.8.3';
+const VERSION = '1.8.4';
 // Retain the original keys: upgrading in the same origin preserves the archive.
 const STORAGE_ENTRIES = 'nfc-reader.entries.v1';
 const STORAGE_SETTINGS = 'nfc-reader.settings.v1';

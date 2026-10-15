@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 echo.
 echo ================================================
-echo  NFC Reader 1.8.3 - Windows Portable (unico EXE)
+echo  NFC Reader 1.8.4 - Windows Portable (unico EXE)
 echo ================================================
 echo.
 where node >nul 2>&1
@@ -28,12 +28,12 @@ if errorlevel 1 goto failure
 echo [4/4] Creazione EXE portable...
 call npm run dist:win
 if errorlevel 1 goto failure
-if not exist "dist\NFC-Reader-Portable-1.8.3-x64.exe" (
+if not exist "dist\NFC-Reader-Portable-1.8.4-x64.exe" (
   echo ERRORE: EXE portable non creato.
   goto failure
 )
 echo.
-echo COMPLETATO: electron\dist\NFC-Reader-Portable-1.8.3-x64.exe
+echo COMPLETATO: electron\dist\NFC-Reader-Portable-1.8.4-x64.exe
 echo Solo un EXE da copiare: non e' richiesta installazione.
 pause
 exit /b 0

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.8.4 · 15 ottobre 2026
+
+- Interfaccia Scrivi semplificata: eliminato il box giallo con gli avvisi tecnici.
+- Aggiunto il pulsante discreto `?` accanto a **Scrivi un tag**, con modale di aiuto accessibile da tastiera.
+- Conferma di sovrascrittura conservata, con testo abbreviato.
+- Contatori e istruzioni semplificati, layout più leggibile su PC e smartphone.
+- Invariati PC/SC, modalità di lettura e verifiche di scrittura introdotte nella v1.8.3.
+
 ## v1.8.3 · 15 ottobre 2026
 
 - **Lettura multipla** rinominata come opzione: disattivata di default, legge un solo tag e mostra automaticamente i dettagli. La preferenza precedente `singleMode` non impone più la scansione continua.

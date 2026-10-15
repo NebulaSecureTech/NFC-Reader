@@ -50,9 +50,9 @@ test('manifest relativo e icone PWA presenti',()=>{
 });
 test('versioni degli asset coerenti, niente richieste CDN',()=>{
   assert.ok(!/(?:src|href)=[\"']https?:\/\//.test(html));
-  for(const resource of ['assets/css/style.css','assets/js/app.mjs','assets/vendor/vue.global.js']) assert.ok(html.includes(`${resource}?v=1.8.3`));
+  for(const resource of ['assets/css/style.css','assets/js/app.mjs','assets/vendor/vue.global.js']) assert.ok(html.includes(`${resource}?v=1.8.4`));
   const app=fs.readFileSync(path.join(root,'assets/js/app.mjs'),'utf8');
-  assert.ok(app.includes("./core.mjs?v=1.8.3"));
+  assert.ok(app.includes("./core.mjs?v=1.8.4"));
 });
 test('precache completo senza attivazione forzata',async()=>{
   const s=setup();await s.install();
@@ -63,7 +63,7 @@ test('shell e asset disponibili dalla cache senza rete (simulata)',async()=>{
   const s=setup();await s.install();
   assert.ok((await s.get(scope,'navigate')).includes('LETTURA MULTIPLA'));
   assert.ok((await s.get(`${scope}index.html?source=pwa`,'navigate')).includes('panel-history'));
-  assert.ok((await s.get(`${scope}assets/js/app.mjs?v=1.8.3`)).includes('handleReading'));
+  assert.ok((await s.get(`${scope}assets/js/app.mjs?v=1.8.4`)).includes('handleReading'));
   assert.equal(s.stats.network,0);
 });
 test('attivazione rimuove solo le cache della stessa app',async()=>{
@@ -105,4 +105,17 @@ test('nuovo contenuto NDEF dello stesso UID aggiorna lo storico senza un duplica
  assert.match(app,/refreshExistingTag\(tag\)/);
  assert.match(app,/const updated=this\.refreshExistingTag\(tag\)/);
  assert.match(app,/Dati del tag aggiornati/);
+});
+
+
+test('scrittura compatta e informazioni solo nella modale di aiuto',()=>{
+ assert.doesNotMatch(html,/class="writer-warning"/);
+ assert.match(html,/class="writer-help-button"/);
+ assert.match(html,/@click="openDialog\('write-help'\)"/);
+ assert.match(html,/modal === 'write-help'/);
+ assert.match(html,/Autorizzo la sovrascrittura/);
+ assert.match(html,/250 byte/);
+ assert.match(html,/v-model="writeConfirmed"/);
+ const app=fs.readFileSync(path.join(root,'assets/js/app.mjs'),'utf8');
+ assert.match(app,/canWrite\(\) \{return this\.writeConfirmed && this\.writeValid/);
 });
