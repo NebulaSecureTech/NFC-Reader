@@ -1,335 +1,529 @@
 import {
-  MAX_ENTRIES, parseNfcReading, formattedTime, exportCsv, exportTxt, restoreEntries,
-} from './core.mjs';
-import { prepareAudio, playReadSound } from './sound.mjs';
+  MAX_ENTRIES, REPEAT_DELAY_MS, parseNfcReading, restoreEntries, normalizeUid,
+  formattedTime, formattedShortDate, formattedTimestamp, exportCsv, exportTxt, nfcErrorMessage,
+} from './core.mjs?v=1.2.0';
+import {prepareAudio, playSound} from './sound.mjs?v=1.2.0';
 
-const STORAGE_ENTRIES = 'nfc-reader.entries.v1';    // Compatibile con NFC Reader v1.0.0
+const VERSION = '1.2.0';
+// Retain the original keys: upgrading in the same origin preserves the archive.
+const STORAGE_ENTRIES = 'nfc-reader.entries.v1';
 const STORAGE_SETTINGS = 'nfc-reader.settings.v1';
-const REPEAT_DELAY_MS = 1400;   // Ignora eventi multipli mentre il tag resta vicino.
-const SHOW_FIRST = 60;
-
+const PAGE_SIZE = 50;
 let scanController = null;
+let lastEvent = {key: '', at: -Infinity};
+let lastErrorAt = -Infinity;
 let wakeLock = null;
-let wakeLockPending = false;
-let installEvent = null;
+let wakePending = false;
 let toastTimer = null;
-let pulseTimer = null;
-const lastReadAt = new Map();
+let feedbackTimer = null;
+let installEvent = null;
+let workerRegistration = null;
+let updateRequested = false;
+let returnFocus = null;
+let rawArchive = null;
+let initialProblem = '';
+let initialEntries = [];
+let savedSettings = {};
 
-function readJSON(key, fallback) {
-  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
-  catch (_) { return fallback; }
+try {
+  rawArchive = localStorage.getItem(STORAGE_ENTRIES);
+  const data = rawArchive === null ? [] : JSON.parse(rawArchive);
+  if (!Array.isArray(data)) throw new Error('Invalid archive');
+  initialEntries = restoreEntries(data);
+  if (initialEntries.length !== data.length) initialProblem = 'corrupt';
+} catch (_) { initialProblem = rawArchive === null ? 'unavailable' : 'corrupt'; }
+try {
+  const data = JSON.parse(localStorage.getItem(STORAGE_SETTINGS) || '{}');
+  if (data && typeof data === 'object' && !Array.isArray(data)) savedSettings = data;
+} catch (_) { /* A broken preference cannot hide an otherwise valid archive. */ }
+const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+
+function newId() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+function fileName(ext) {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `nfc-tags_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}.${ext}`;
 }
-function saveJSON(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); return true; }
-  catch (_) { return false; }
-}
-function exportFileName(ext) {
-  const now = new Date();
-  const two = n => String(n).padStart(2, '0');
-  return `nfc-tags_${now.getFullYear()}-${two(now.getMonth()+1)}-${two(now.getDate())}_${two(now.getHours())}-${two(now.getMinutes())}.${ext}`;
-}
-function downloadBlob(contents, mime, name) {
-  const blob = new Blob([contents], {type: mime});
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url; anchor.download = name;
-  document.body.appendChild(anchor); anchor.click(); anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
-function nfcErrorMessage(error) {
-  switch (error?.name) {
-    case 'NotAllowedError': return 'Permesso NFC negato. Controlla le autorizzazioni di Chrome.';
-    case 'NotSupportedError': return 'Lettura NFC non supportata dal telefono o dal tag.';
-    case 'NotReadableError': return 'Controlla che NFC sia attivo nelle impostazioni Android.';
-    case 'InvalidStateError': return 'Un’altra scansione NFC è già attiva.';
-    case 'SecurityError': return 'NFC richiede HTTPS e una pagina visibile.';
-    case 'AbortError': return 'Scansione interrotta.';
-    default: return 'Impossibile avviare NFC. Verifica permessi e impostazioni.';
-  }
+function downloadBlob(contents, type, name) {
+  const url = URL.createObjectURL(new Blob([contents], {type}));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 if (!window.Vue) {
-  const fallback = document.getElementById('app');
-  fallback.removeAttribute('v-cloak');
-  fallback.innerHTML = '<div style="max-width:400px;margin:15vh auto;padding:24px;text-align:center"><h1>Impossibile avviare NFC Reader</h1><p>Il file locale della libreria Vue non è disponibile. Ricarica la pagina o ricarica tutti i file dello ZIP.</p><button onclick="location.reload()">Riprova</button></div>';
+  const app = document.getElementById('app');
+  app.removeAttribute('v-cloak');
+  app.textContent = 'NFC Reader non si avvia. Ricarica la pagina e verifica che tutti i file dello ZIP siano pubblicati.';
 } else {
-  const { createApp } = window.Vue;
-  const settings = readJSON(STORAGE_SETTINGS, {});
-  const initialEntries = restoreEntries(readJSON(STORAGE_ENTRIES, []));
-  const media = window.matchMedia?.('(prefers-color-scheme: dark)');
-  const defaultTheme = ['auto','dark','light'].includes(settings.theme) ? settings.theme : 'auto';
-
-  createApp({
+  window.Vue.createApp({
     data() {
       return {
+        version: VERSION,
+        tab: 'reader',
         entries: initialEntries,
-        theme: defaultTheme,
-        soundEnabled: settings.soundEnabled !== false,
-        vibrationEnabled: settings.vibrationEnabled !== false,
-        ignoreDuplicates: settings.ignoreDuplicates !== false,
-        keepScreenAwake: settings.keepScreenAwake === true,
-        includeNumber: settings.includeNumber !== false,
-        settingsOpen: false,
-        confirmClear: false,
-        toastMessage: '',
-        toastTone: 'info',
-        scanState: 'idle',
-        documentHidden: document.hidden,
         search: '',
-        visibleLimit: SHOW_FIRST,
-        recentSuccess: false,
-        lastDuplicateNotice: 0,
+        visibleLimit: PAGE_SIZE,
+        scanState: 'idle',
+        hidden: document.hidden,
+        modal: '',
+        settingsTab: 'reading',
+        detailId: '',
+        feedback: null,
+        flash: '',
+        duplicates: 0,
+        errors: 0,
+        toast: null,
+        storageProblem: initialProblem,
+        pendingSave: false,
+        externalConflict: false,
+        recoveryDownloaded: false,
+        soundEnabled: savedSettings.soundEnabled !== false,
+        alertSoundEnabled: savedSettings.alertSoundEnabled !== false,
+        volume: Number.isFinite(savedSettings.volume) ? Math.max(0, Math.min(100, savedSettings.volume)) : 65,
+        vibrationEnabled: savedSettings.vibrationEnabled !== false,
+        ignoreDuplicates: savedSettings.ignoreDuplicates !== false,
+        keepScreenAwake: savedSettings.keepScreenAwake === true,
+        includeNumber: savedSettings.includeNumber !== false,
+        theme: ['auto', 'light', 'dark'].includes(savedSettings.theme) ? savedSettings.theme : 'auto',
+        wakeActive: false,
+        wakeUnavailable: false,
         installPrompt: false,
         installed: window.matchMedia?.('(display-mode: standalone)')?.matches || navigator.standalone === true,
+        offlineReady: false,
+        offlineFailed: false,
+        updateAvailable: false,
       };
-    },
-    watch: {
-      settingsOpen() { this.syncModalBody(); },
-      confirmClear() { this.syncModalBody(); },
     },
     computed: {
       supported() { return window.isSecureContext && typeof window.NDEFReader === 'function'; },
-      isRunning() { return this.scanState !== 'idle'; },
-      statusClass() {
-        return !this.supported ? 'unavailable' : this.scanState === 'active' ? 'active' : this.scanState === 'starting' ? 'starting' : '';
-      },
+      running() { return this.scanState !== 'idle'; },
+      blocked() { return !!this.storageProblem || this.externalConflict; },
+      canStart() { return this.supported && !this.blocked && this.entries.length < MAX_ENTRIES; },
       statusLabel() {
-        if (!this.supported) return 'Non disponibile';
+        if (!this.supported) return 'Non supportato';
         if (this.scanState === 'starting') return 'Attivazione';
-        if (this.scanState === 'active') return this.documentHidden ? 'In pausa' : 'In ascolto';
-        return 'Pronto';
+        return this.running ? (this.hidden ? 'In pausa' : 'In ascolto') : 'Pronto';
       },
-      scanTitle() {
-        if (!this.supported) return 'NFC non disponibile';
-        if (this.scanState === 'starting') return 'Attivazione NFC...';
-        if (this.scanState === 'active') return this.documentHidden ? 'Lettura in pausa' : 'Avvicina un tag NFC';
-        return 'Pronto alla lettura';
+      readerTitle() {
+        if (!this.supported) return 'Usa un telefono NFC';
+        if (this.blocked) return 'Controlla l\u2019archivio';
+        if (this.entries.length >= MAX_ENTRIES) return 'Archivio completo';
+        if (this.scanState === 'starting') return 'Attivazione NFC';
+        return this.running ? 'Avvicina un tag' : 'Pronto alla lettura';
       },
-      scanSubtitle() {
-        if (!this.supported) return 'Per scansionare usa Chrome su Android, con NFC e HTTPS attivi.';
-        if (this.scanState === 'starting') return 'Concedi al browser il permesso per leggere NFC, se richiesto.';
-        if (this.scanState === 'active') return this.documentHidden ? 'Torna a questa schermata per continuare.' : 'Puoi leggere tutti i tag che vuoi, senza riavviare.';
-        return 'Attiva la scansione e passa un tag dopo l’altro.';
+      readerSubtitle() {
+        if (!this.supported) return 'Apri questa app con Chrome su Android.';
+        if (this.blocked) return 'Esporta i tag e risolvi l\u2019avviso in alto.';
+        if (this.entries.length >= MAX_ENTRIES) return 'Esporta e svuota lo storico per continuare.';
+        if (this.scanState === 'starting') return 'Consenti l\u2019accesso NFC, se richiesto.';
+        return this.running ? 'Un tag dopo l\u2019altro, senza premere altro.' : 'Premi Avvia per iniziare la raccolta.';
+      },
+      readerHint() {
+        if (!this.supported) return 'NFC attivo, sito HTTPS e tag NDEF.';
+        if (this.running && this.keepScreenAwake && this.wakeActive) return 'Schermo mantenuto acceso durante la lettura.';
+        return this.running ? 'Tieni l\u2019app visibile e lo schermo sbloccato.' : 'Le letture restano salvate su questo dispositivo.';
       },
       lastEntry() { return this.entries.at(-1) || null; },
+      entryKeys() { return new Set(this.entries.map(e => e.key)); },
       filteredEntries() {
         const query = this.search.trim().toLocaleLowerCase('it-IT');
-        return this.entries.map((entry, index) => ({...entry, number: index + 1}))
-          .reverse().filter(entry => !query || `${entry.uid} ${entry.content} ${entry.number}`.toLocaleLowerCase('it-IT').includes(query));
+        const uidQuery = normalizeUid(this.search);
+        return this.entries.map((entry, i) => ({...entry, number: i + 1})).reverse().filter(entry =>
+          !query || entry.uid.toLocaleLowerCase('it-IT').includes(query) ||
+          (uidQuery && entry.uid.includes(uidQuery)) || entry.content.toLocaleLowerCase('it-IT').includes(query));
       },
       visibleEntries() { return this.filteredEntries.slice(0, this.visibleLimit); },
-      moreToShow() { return this.filteredEntries.length > this.visibleLimit; },
+      moreEntries() { return this.filteredEntries.length > this.visibleLimit; },
+      detail() { return this.entries.find(e => e.id === this.detailId) || null; },
+      lastCard() {
+        if (this.feedback) return this.feedback;
+        if (this.lastEntry) return {kind: 'neutral', title: 'Ultimo tag salvato', uid: this.lastEntry.uid,
+          message: this.lastEntry.uid ? '' : 'UID non disponibile', timestamp: this.lastEntry.timestamp};
+        return {kind: 'neutral', title: 'Il prossimo tag apparir\u00e0 qui', uid: '', message: 'Tutto pronto per la prima lettura.', timestamp: ''};
+      },
+      storageMessage() {
+        if (this.externalConflict) return 'Archivio modificato in un\u2019altra scheda. Esporta prima di ricaricare.';
+        if (this.storageProblem === 'corrupt') return 'Archivio locale danneggiato: recupero richiesto.';
+        if (this.pendingSave) return 'Modifiche solo in memoria. Esporta prima di chiudere.';
+        return 'Salvataggio locale non disponibile. Verifica lo spazio e i permessi.';
+      },
     },
     mounted() {
       this.applyTheme();
       document.addEventListener('visibilitychange', this.onVisibility);
       window.addEventListener('pagehide', this.stopScan);
-      window.addEventListener('keydown', this.onKeydown);
+      window.addEventListener('beforeunload', this.beforeUnload);
+      window.addEventListener('storage', this.onStorage);
       window.addEventListener('beforeinstallprompt', this.onInstallAvailable);
       window.addEventListener('appinstalled', this.onAppInstalled);
       media?.addEventListener?.('change', this.onSystemTheme);
-      if ('serviceWorker' in navigator && window.isSecureContext) {
-        window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}), {once: true});
-        if (document.readyState === 'complete') navigator.serviceWorker.register('./sw.js').catch(() => {});
-      }
+      this.registerWorker();
     },
     beforeUnmount() {
       this.stopScan();
-      document.body.classList.remove('modal-visible');
+      clearTimeout(toastTimer);
+      clearTimeout(feedbackTimer);
       document.removeEventListener('visibilitychange', this.onVisibility);
       window.removeEventListener('pagehide', this.stopScan);
-      window.removeEventListener('keydown', this.onKeydown);
+      window.removeEventListener('beforeunload', this.beforeUnload);
+      window.removeEventListener('storage', this.onStorage);
       window.removeEventListener('beforeinstallprompt', this.onInstallAvailable);
       window.removeEventListener('appinstalled', this.onAppInstalled);
       media?.removeEventListener?.('change', this.onSystemTheme);
-      window.clearTimeout(toastTimer);
-      window.clearTimeout(pulseTimer);
     },
     methods: {
-      formattedTime,
-      padNumber(value) { return String(value).padStart(2, '0'); },
-      showToast(text, tone = 'info') {
-        window.clearTimeout(toastTimer);
-        this.toastMessage = text;
-        this.toastTone = tone;
-        toastTimer = window.setTimeout(() => { this.toastMessage = ''; }, 2800);
+      formattedTime, formattedShortDate, formattedTimestamp,
+      padNumber(n) { return String(n).padStart(2, '0'); },
+      iconFor(kind) { return {success: '#ico-check', duplicate: '#ico-duplicate', error: '#ico-info'}[kind] || '#ico-tag'; },
+      setTab(tab, focus = false) {
+        this.tab = tab;
+        if (focus) this.$nextTick(() => document.getElementById(`tab-${tab}`)?.focus());
       },
-      onSystemTheme() { if (this.theme === 'auto') this.applyTheme(); },
-      applyTheme() {
-        const actualTheme = this.theme === 'auto' ? (media?.matches ? 'dark' : 'light') : this.theme;
-        document.documentElement.dataset.theme = actualTheme;
-        const metaTheme = document.querySelector('meta[name="theme-color"]');
-        metaTheme?.setAttribute('content', actualTheme === 'dark' ? '#1c1e2c' : '#f6f7fb');
+      tabKeydown(event) {
+        if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault();
+          this.setTab(event.key === 'Home' ? 'reader' : event.key === 'End' ? 'history' : this.tab === 'reader' ? 'history' : 'reader', true);
+        }
       },
-      setTheme(theme) { this.theme = theme; this.applyTheme(); this.saveSettings(); },
-      saveSettings() {
-        saveJSON(STORAGE_SETTINGS, {
-          theme: this.theme,
-          soundEnabled: this.soundEnabled,
-          vibrationEnabled: this.vibrationEnabled,
-          ignoreDuplicates: this.ignoreDuplicates,
-          keepScreenAwake: this.keepScreenAwake,
-          includeNumber: this.includeNumber,
-        });
+      notify(text, tone = 'neutral') {
+        clearTimeout(toastTimer);
+        this.toast = {text, tone};
+        toastTimer = setTimeout(() => { this.toast = null; }, 3200);
       },
-      onSettingsChange() {
-        this.saveSettings();
-        if (this.soundEnabled) prepareAudio();  // La modifica dello switch è un gesto utente.
-        if (this.keepScreenAwake && this.isRunning) this.requestWakeLock();
-        else if (!this.keepScreenAwake) this.releaseWakeLock();
+      emitFeedback(kind, title, message = '', tag = null) {
+        this.feedback = {kind, title, message, uid: tag?.uid || '', timestamp: tag?.timestamp || new Date().toISOString()};
+        this.flash = kind;
+        clearTimeout(feedbackTimer);
+        feedbackTimer = setTimeout(() => { this.flash = ''; }, 850);
+        if (this.tab === 'history' && !this.modal) this.notify(title + (message ? `: ${message}` : ''), kind);
+        const enabled = kind === 'success' ? this.soundEnabled : this.alertSoundEnabled;
+        if (enabled) playSound(kind, this.volume);
+        if (this.vibrationEnabled) {
+          try { navigator.vibrate?.(kind === 'error' ? [90, 60, 90] : kind === 'duplicate' ? [30, 65, 30] : 35); } catch (_) {}
+        }
       },
-      openSettings() {
-        this.settingsOpen = true;
-        this.$nextTick(() => this.$refs.settingsClose?.focus());
-      },
-      closeSettings() {
-        this.settingsOpen = false;
-        this.$nextTick(() => document.querySelector('.settings-trigger')?.focus());
-      },
-      syncModalBody() { document.body.classList.toggle('modal-visible', this.settingsOpen || this.confirmClear); },
-      onKeydown(event) {
-        if (event.key !== 'Escape') return;
-        if (this.confirmClear) this.confirmClear = false;
-        else if (this.settingsOpen) this.closeSettings();
-      },
-      onVisibility() {
-        this.documentHidden = document.hidden;
-        if (document.hidden) this.releaseWakeLock();
-        else if (this.isRunning && this.keepScreenAwake) this.requestWakeLock();
-      },
-      async requestWakeLock() {
-        if (wakeLock || wakeLockPending || !this.keepScreenAwake || !this.isRunning || document.hidden) return;
-        if (!navigator.wakeLock?.request) return;
-        wakeLockPending = true;
-        try {
-          const lock = await navigator.wakeLock.request('screen');
-          if (!this.isRunning || !this.keepScreenAwake || document.hidden) { await lock.release(); return; }
-          wakeLock = lock;
-          lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
-        } catch (_) { /* Supporto non garantito: l'NFC continua senza wake lock. */ }
-        finally { wakeLockPending = false; }
-      },
-      releaseWakeLock() {
-        const lock = wakeLock; wakeLock = null;
-        if (lock) lock.release().catch(() => {});
+      reportReadError(message, throttled = false) {
+        const now = Date.now();
+        if (throttled && now - lastErrorAt < REPEAT_DELAY_MS) { lastErrorAt = now; return; }
+        lastErrorAt = now;
+        this.errors++;
+        this.emitFeedback('error', 'Lettura non riuscita', message);
       },
       startScan() {
-        if (this.isRunning || !this.supported) return;
-        // Importante: scan() va chiamato senza await intermedi, direttamente dal click.
-        if (this.soundEnabled) prepareAudio();
+        if (this.running || !this.canStart) return;
+        // No await before scan(): preserve the browser's transient user activation.
+        if (this.soundEnabled || this.alertSoundEnabled) prepareAudio();
+        lastEvent = {key: '', at: -Infinity};
+        lastErrorAt = -Infinity;
+        this.feedback = null;
         const controller = new AbortController();
         scanController = controller;
         this.scanState = 'starting';
+        const current = () => scanController === controller && !controller.signal.aborted;
         try {
           const reader = new window.NDEFReader();
           reader.addEventListener('reading', event => {
-            if (scanController === controller && !controller.signal.aborted) this.handleReading(event);
+            if (current() && !document.hidden) this.handleReading(event);
           });
           reader.addEventListener('readingerror', () => {
-            if (scanController === controller && !controller.signal.aborted) this.showToast('Tag non leggibile o non compatibile NDEF.', 'error');
+            if (current() && !document.hidden) this.reportReadError('Tag non leggibile o non compatibile NDEF.', true);
           });
-          // Non serve rilanciare scan() a ogni tag: reading è un evento continuo.
           Promise.resolve(reader.scan({signal: controller.signal})).then(() => {
-            if (scanController !== controller || controller.signal.aborted) return;
+            if (!current()) return;
             this.scanState = 'active';
-            if (this.keepScreenAwake) this.requestWakeLock();
+            this.requestWakeLock();
           }).catch(error => {
-            if (scanController !== controller || controller.signal.aborted) return;
+            if (!current()) return;
             this.stopScan();
-            this.showToast(nfcErrorMessage(error), 'error');
+            this.reportReadError(nfcErrorMessage(error));
           });
         } catch (error) {
-          if (scanController === controller) this.stopScan();
-          this.showToast(nfcErrorMessage(error), 'error');
+          if (!current()) return;
+          this.stopScan();
+          this.reportReadError(nfcErrorMessage(error));
         }
       },
       stopScan() {
-        if (scanController && !scanController.signal.aborted) scanController.abort();
+        const controller = scanController;
         scanController = null;
+        if (controller && !controller.signal.aborted) controller.abort();
         this.scanState = 'idle';
         this.releaseWakeLock();
       },
-      toggleScan() { if (this.isRunning) this.stopScan(); else this.startScan(); },
+      toggleScan() { if (this.running) this.stopScan(); else this.startScan(); },
       handleReading(event) {
-        const tag = parseNfcReading(event);
-        if (!tag) {
-          this.showToast('Tag rilevato, ma senza UID o contenuto leggibile.', 'error');
-          return;
-        }
+        let tag;
+        try { tag = parseNfcReading(event); }
+        catch (error) { this.reportReadError(error instanceof RangeError ? error.message : 'Contenuto NDEF non leggibile.', true); return; }
+        if (!tag) { this.reportReadError('Tag rilevato, ma senza UID o dati NDEF utilizzabili.', true); return; }
         const now = Date.now();
-        const previous = lastReadAt.get(tag.key) ?? 0;
-        if (now - previous < REPEAT_DELAY_MS) return;
-        lastReadAt.set(tag.key, now);
-        // Evita di tenere una mappa infinita in una sessione molto lunga.
-        if (lastReadAt.size > MAX_ENTRIES + 100) lastReadAt.clear();
-        if (this.ignoreDuplicates && this.entries.some(item => item.key === tag.key)) {
-          if (now - this.lastDuplicateNotice > 2200) {
-            this.showToast('Tag già presente: duplicato ignorato.');
-            this.lastDuplicateNotice = now;
+        const isBurst = lastEvent.key === tag.key && now - lastEvent.at < REPEAT_DELAY_MS;
+        lastEvent = {key: tag.key, at: now};
+        if (isBurst) return; // Wait for a quiet interval; do not beep continuously on a held tag.
+        const duplicate = this.entryKeys.has(tag.key);
+        if (duplicate) {
+          this.duplicates++;
+          if (this.ignoreDuplicates) {
+            this.emitFeedback('duplicate', 'Tag gi\u00e0 presente', 'Doppione non aggiunto allo storico.', tag);
+            return;
           }
-          return;
         }
         if (this.entries.length >= MAX_ENTRIES) {
-          this.showToast(`Hai raggiunto ${MAX_ENTRIES} tag: esporta e svuota l’elenco.`, 'error');
+          this.stopScan();
+          this.reportReadError('Limite di 5.000 tag. Esporta e svuota lo storico.');
           return;
         }
-        this.entries.push({...tag, id: window.crypto?.randomUUID?.() || `${now}-${Math.random().toString(36).slice(2)}`});
-        if (!saveJSON(STORAGE_ENTRIES, this.entries)) this.showToast('Memoria piena: esporta ora le letture.', 'error');
-        else this.showToast('Tag acquisito', 'success');
-        if (this.soundEnabled) playReadSound();
-        if (this.vibrationEnabled) { try { navigator.vibrate?.(40); } catch (_) {} }
-        this.recentSuccess = true;
-        window.clearTimeout(pulseTimer);
-        pulseTimer = window.setTimeout(() => { this.recentSuccess = false; }, 850);
-        if (this.scanState === 'starting') this.scanState = 'active';
+        this.entries = [...this.entries, {...tag, id: newId()}];
+        // A failed save retains the read in memory, stops NFC, and never plays success.
+        if (!this.persistEntries()) {
+          this.stopScan();
+          this.reportReadError('Tag solo in memoria: esporta lo storico prima di chiudere.');
+          return;
+        }
+        this.emitFeedback(duplicate ? 'duplicate' : 'success', duplicate ? 'Doppione salvato' : 'Tag acquisito',
+          duplicate ? 'Filtro duplicati disattivato.' : (tag.uid ? '' : 'UID assente: salvato il contenuto NDEF.'), tag);
       },
+      persistEntries() {
+        if (this.externalConflict) return false;
+        try {
+          const data = JSON.stringify(this.entries);
+          localStorage.setItem(STORAGE_ENTRIES, data);
+          rawArchive = data;
+          this.pendingSave = false;
+          this.storageProblem = '';
+          return true;
+        } catch (_) {
+          this.pendingSave = true;
+          this.storageProblem = 'write';
+          return false;
+        }
+      },
+      retryStorage() {
+        if (this.externalConflict) { this.notify('Esporta lo storico, poi chiudi le altre schede e ricarica.', 'error'); return; }
+        if (this.storageProblem === 'corrupt') { this.openDialog('repair'); return; }
+        if (this.storageProblem === 'unavailable' && !this.pendingSave) {
+          // A transient read failure must not overwrite an existing archive with [].
+          try { rawArchive = localStorage.getItem(STORAGE_ENTRIES); }
+          catch (_) { this.notify('Archivio ancora non accessibile.', 'error'); return; }
+          try {
+            const parsed = rawArchive === null ? [] : JSON.parse(rawArchive);
+            if (!Array.isArray(parsed)) throw new Error('Invalid archive');
+            this.entries = restoreEntries(parsed);
+            if (this.entries.length !== parsed.length) throw new Error('Partial archive');
+          } catch (_) { this.storageProblem = 'corrupt'; this.openDialog('repair'); return; }
+        }
+        if (this.persistEntries()) this.notify('Archivio salvato. Puoi riprendere la lettura.', 'success');
+        else this.notify('Salvataggio non riuscito. Esporta i tag per conservarli.', 'error');
+      },
+      beforeUnload(event) {
+        if (!this.pendingSave) return;
+        event.preventDefault();
+        event.returnValue = '';
+      },
+      onStorage(event) {
+        if (event.key !== STORAGE_ENTRIES && event.key !== null) return;
+        this.stopScan();
+        if (this.pendingSave) {
+          this.externalConflict = true;
+          return;
+        }
+        try {
+          rawArchive = event.key === null ? null : event.newValue;
+          const parsed = rawArchive === null ? [] : JSON.parse(rawArchive);
+          if (!Array.isArray(parsed)) throw new Error('Invalid archive');
+          const restored = restoreEntries(parsed);
+          this.entries = restored;
+          this.storageProblem = restored.length !== parsed.length ? 'corrupt' : '';
+          this.feedback = null;
+          lastEvent = {key: '', at: -Infinity};
+          if (this.modal !== 'settings') this.closeDialog();
+          this.notify('Archivio aggiornato da un\u2019altra scheda. Scansione fermata.');
+        } catch (_) { this.storageProblem = 'corrupt'; }
+      },
+      downloadRecovery() {
+        try {
+          downloadBlob(rawArchive ?? '', 'application/json;charset=utf-8', 'nfc-archivio-da-recuperare.json');
+          this.recoveryDownloaded = true;
+        } catch (_) { this.notify('Copia originale non scaricata. Riprova.', 'error'); }
+      },
+      repairArchive() {
+        if (!this.recoveryDownloaded) return;
+        if (this.persistEntries()) {
+          this.closeDialog();
+          this.notify('Archivio ripristinato con i tag recuperabili.', 'success');
+        } else this.notify('Spazio o permessi di archiviazione insufficienti.', 'error');
+      },
+      saveSettings() {
+        try {
+          localStorage.setItem(STORAGE_SETTINGS, JSON.stringify({
+            soundEnabled: this.soundEnabled, alertSoundEnabled: this.alertSoundEnabled, volume: this.volume,
+            vibrationEnabled: this.vibrationEnabled, ignoreDuplicates: this.ignoreDuplicates,
+            keepScreenAwake: this.keepScreenAwake, includeNumber: this.includeNumber, theme: this.theme,
+          }));
+        } catch (_) { this.notify('Preferenze non salvate su questo dispositivo.', 'error'); }
+      },
+      onSettingsChange() {
+        this.saveSettings();
+        if (this.soundEnabled || this.alertSoundEnabled) prepareAudio();
+        if (this.keepScreenAwake && this.running) this.requestWakeLock();
+        else if (!this.keepScreenAwake) this.releaseWakeLock();
+      },
+      testSound(kind) {
+        prepareAudio();
+        // Resume can settle asynchronously; this promise is unrelated to scan().
+        setTimeout(() => {
+          if (!playSound(kind, this.volume)) this.notify('Controlla volume multimediale e audio del browser.', 'error');
+        }, 60);
+      },
+      setTheme(theme) { this.theme = theme; this.applyTheme(); this.saveSettings(); },
+      onSystemTheme() { if (this.theme === 'auto') this.applyTheme(); },
+      applyTheme() {
+        const theme = this.theme === 'auto' ? (media?.matches ? 'dark' : 'light') : this.theme;
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#171822' : '#f7f8fc');
+      },
+      onVisibility() {
+        this.hidden = document.hidden;
+        if (document.hidden) this.releaseWakeLock();
+        else if (this.running) this.requestWakeLock();
+      },
+      async requestWakeLock() {
+        if (wakeLock || wakePending || !this.keepScreenAwake || !this.running || document.hidden) return;
+        if (!navigator.wakeLock?.request) { this.wakeUnavailable = true; return; }
+        wakePending = true;
+        try {
+          const lock = await navigator.wakeLock.request('screen');
+          if (!this.running || !this.keepScreenAwake || document.hidden) { await lock.release(); return; }
+          wakeLock = lock;
+          this.wakeActive = true;
+          this.wakeUnavailable = false;
+          lock.addEventListener('release', () => {
+            if (wakeLock === lock) { wakeLock = null; this.wakeActive = false; }
+          });
+        } catch (_) { this.wakeUnavailable = true; }
+        finally { wakePending = false; }
+      },
+      releaseWakeLock() {
+        const lock = wakeLock;
+        wakeLock = null;
+        this.wakeActive = false;
+        if (lock) lock.release().catch(() => {});
+      },
+      openDialog(name) {
+        this.toast = null;
+        if (name === 'repair') this.recoveryDownloaded = false;
+        if (!this.modal) returnFocus = document.activeElement;
+        this.modal = name;
+        this.$nextTick(() => {
+          const dialog = this.$refs.dialog;
+          if (!dialog.open) dialog.showModal();
+          const focus = dialog.querySelector('[data-autofocus]') || dialog.querySelector('button');
+          focus?.focus({preventScroll: true});
+        });
+      },
+      closeDialog() {
+        this.$refs.dialog?.close();
+        this.modal = '';
+        returnFocus?.focus?.({preventScroll: true});
+      },
+      onDialogKeydown(event) {
+        if (event.key !== 'Tab') return;
+        const dialog = this.$refs.dialog;
+        const focusable = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]')]
+          .filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+          event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault(); first.focus();
+        }
+      },
+      onBackdrop(event) { if (event.target === this.$refs.dialog) this.closeDialog(); },
+      openSettings() { this.settingsTab = 'reading'; this.openDialog('settings'); },
+      openDetail(entry) { this.detailId = entry.id; this.openDialog('detail'); },
       async copyUid(entry) {
-        if (!entry.uid) return;
-        try { await navigator.clipboard.writeText(entry.uid); this.showToast('UID copiato', 'success'); }
-        catch (_) { this.showToast('Non riesco a copiare l’UID.', 'error'); }
+        if (!entry?.uid) return;
+        try { await navigator.clipboard.writeText(entry.uid); this.notify('UID copiato', 'success'); }
+        catch (_) { this.notify('Copia non disponibile. Seleziona l\u2019UID dal dettaglio.', 'error'); }
       },
-      removeEntry(id) {
-        this.entries = this.entries.filter(entry => entry.id !== id);
-        saveJSON(STORAGE_ENTRIES, this.entries);
-        this.showToast('Tag eliminato');
+      askDelete() { if (this.blocked) return; this.stopScan(); this.openDialog('delete'); },
+      deleteEntry() {
+        if (this.blocked) return;
+        this.entries = this.entries.filter(e => e.id !== this.detailId);
+        lastEvent = {key: '', at: -Infinity};
+        this.feedback = null;
+        this.closeDialog();
+        if (this.persistEntries()) this.notify('Tag eliminato');
+        else this.notify('Eliminazione non salvata: controlla l\u2019archivio.', 'error');
       },
       askClear() {
-        if (!this.entries.length) return;
-        this.confirmClear = true;
-        this.$nextTick(() => this.$refs.clearCancel?.focus());
+        if (!this.entries.length || this.blocked) return;
+        this.stopScan();
+        this.openDialog('clear');
       },
       clearAll() {
+        if (this.blocked) return;
         this.entries = [];
         this.search = '';
-        this.visibleLimit = SHOW_FIRST;
-        lastReadAt.clear();
-        this.confirmClear = false;
-        saveJSON(STORAGE_ENTRIES, []);
-        this.showToast('Elenco svuotato');
+        this.visibleLimit = PAGE_SIZE;
+        this.feedback = null;
+        this.duplicates = 0;
+        this.errors = 0;
+        lastEvent = {key: '', at: -Infinity};
+        this.closeDialog();
+        if (this.persistEntries()) this.notify('Storico svuotato');
+        else this.notify('Cancellazione non salvata. Riprova prima di chiudere.', 'error');
       },
       download(format) {
-        if (!this.entries.length) return;
+        if (!this.entries.length || !['csv', 'txt'].includes(format)) return;
         try {
-          if (format === 'csv') downloadBlob(exportCsv(this.entries, this.includeNumber), 'text/csv;charset=utf-8', exportFileName('csv'));
-          else if (format === 'txt') downloadBlob(exportTxt(this.entries, this.includeNumber), 'text/plain;charset=utf-8', exportFileName('txt'));
-          else return;
-          this.showToast(`${format.toUpperCase()} esportato`, 'success');
-        } catch (_) { this.showToast('Errore durante l’esportazione.', 'error'); }
+          const contents = format === 'csv' ? exportCsv(this.entries, this.includeNumber) : exportTxt(this.entries, this.includeNumber);
+          downloadBlob(contents, format === 'csv' ? 'text/csv;charset=utf-8' : 'text/plain;charset=utf-8', fileName(format));
+          this.notify(`${format.toUpperCase()}: download avviato`, 'success');
+        } catch (_) { this.notify('Esportazione non riuscita.', 'error'); }
       },
-      onInstallAvailable(event) {
-        event.preventDefault();
-        installEvent = event;
-        this.installPrompt = true;
-      },
+      onInstallAvailable(event) { event.preventDefault(); installEvent = event; this.installPrompt = true; },
       async installApp() {
         if (!installEvent) return;
-        const prompt = installEvent;
+        const event = installEvent;
         installEvent = null;
         this.installPrompt = false;
-        try { await prompt.prompt(); await prompt.userChoice; } catch (_) {}
+        try { await event.prompt(); await event.userChoice; }
+        catch (_) { this.notify('Installa l\u2019app dal menu del browser.'); }
       },
       onAppInstalled() { this.installed = true; this.installPrompt = false; installEvent = null; },
+      async registerWorker() {
+        if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          this.offlineReady = true;
+          if (updateRequested) location.reload();
+        });
+        try {
+          workerRegistration = await navigator.serviceWorker.register('./sw.js', {updateViaCache: 'none'});
+          const check = () => { this.updateAvailable = !!workerRegistration.waiting; };
+          check();
+          workerRegistration.addEventListener('updatefound', () => {
+            const worker = workerRegistration.installing;
+            worker?.addEventListener('statechange', () => { if (worker.state === 'installed') check(); });
+          });
+          navigator.serviceWorker.ready.then(() => { this.offlineReady = true; });
+          workerRegistration.update().catch(() => {});
+        } catch (_) { this.offlineFailed = true; }
+      },
+      applyUpdate() {
+        if (this.running) { this.notify('Ferma la scansione prima di aggiornare.'); return; }
+        if (this.pendingSave || this.blocked) { this.notify('Salva o esporta lo storico prima di aggiornare.', 'error'); return; }
+        if (!workerRegistration?.waiting) return;
+        updateRequested = true;
+        workerRegistration.waiting.postMessage({type: 'SKIP_WAITING'});
+      },
     },
   }).mount('#app');
 }

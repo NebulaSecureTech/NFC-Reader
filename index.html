@@ -2,28 +2,28 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f6f7fb">
-  <meta name="description" content="NFC Reader: lettura continua dei tag NFC, registro locale, esportazione CSV e TXT. Una web app gratuita e senza account.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="description" content="Leggi tag NFC in sequenza, conserva lo storico sul dispositivo ed esporta CSV o TXT. Una web app semplice, senza account.">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="NFC Reader">
-  <link rel="icon" href="./assets/icons/favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./assets/css/style.css">
   <title>NFC Reader</title>
+  <link rel="icon" href="./assets/icons/favicon.svg?v=1.2.0" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest?v=1.2.0">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.2.0">
   <script>
     try {
-      const s = JSON.parse(localStorage.getItem('nfc-reader.settings.v1') || '{}');
-      const preferred = s.theme || 'auto';
-      document.documentElement.dataset.theme = preferred === 'auto'
-        ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : preferred;
+      const settings = JSON.parse(localStorage.getItem('nfc-reader.settings.v1') || '{}');
+      const theme = ['dark', 'light'].includes(settings?.theme) ? settings.theme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.dataset.theme = theme;
     } catch (_) {}
   </script>
 </head>
 <body>
+  <!-- SVG symbols are local and do not depend on an icon font. -->
   <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <symbol id="ico-nfc" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 16V9.8a2 2 0 0 1 3.4-1.4l4 4V8m-8 8h9"/></symbol>
     <symbol id="ico-gear" viewBox="0 0 24 24"><path d="M9.7 3.4 10.2 2h3.6l.5 1.4a2 2 0 0 0 2.6 1.1l1.3-.6 2.5 2.5-.6 1.3a2 2 0 0 0 1.1 2.6l1.4.5v3.6l-1.4.5a2 2 0 0 0-1.1 2.6l.6 1.3-2.5 2.5-1.3-.6a2 2 0 0 0-2.6 1.1l-.5 1.4h-3.6l-.5-1.4a2 2 0 0 0-2.6-1.1l-1.3.6-2.5-2.5.6-1.3a2 2 0 0 0-1.1-2.6L2 14.4v-3.6l1.4-.5a2 2 0 0 0 1.1-2.6l-.6-1.3 2.5-2.5 1.3.6a2 2 0 0 0 2.6-1.1Z"/><circle cx="12" cy="12.6" r="3"/></symbol>
@@ -48,194 +48,134 @@
     <symbol id="ico-shield" viewBox="0 0 24 24"><path d="m12 2 8 4v5c0 5.2-3 8.6-8 11-5-2.4-8-5.8-8-11V6l8-4Z"/><path d="m9 12 2 2 4-4"/></symbol>
     <symbol id="ico-install" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M5 18v2h14v-2"/></symbol>
     <symbol id="ico-file" viewBox="0 0 24 24"><path d="M7 2h7l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"/><path d="M14 2v6h5M8 13h8"/></symbol>
+    <symbol id="ico-duplicate" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="3"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3m6-5v4m0 3h.01"/></symbol>
+    <symbol id="ico-history" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7m2-4v5l3 2"/></symbol>
+    <symbol id="ico-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5m-5 0a8 8 0 0 1 14-5l2 2M4 15l2 2a8 8 0 0 0 14-5"/></symbol>
   </svg>
 
   <div id="app" v-cloak>
-    <header class="app-header">
-      <div class="shell header-inner">
-        <div class="brand">
-          <span class="brand-icon"><svg class="icon"><use href="#ico-nfc"/></svg></span>
-          <span class="brand-text"><strong>NFC Reader</strong><small>Raccolta tag</small></span>
-        </div>
-        <div class="header-actions">
-          <span class="private-label"><svg class="icon small"><use href="#ico-shield"/></svg> Solo sul dispositivo</span>
-          <button class="icon-btn settings-trigger" type="button" title="Impostazioni" aria-label="Apri impostazioni" @click="openSettings">
-            <svg class="icon"><use href="#ico-gear"/></svg>
-          </button>
-        </div>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#ico-nfc"/></svg></span><div><strong>NFC Reader</strong><span>Il tuo lettore, sempre pronto.</span></div></div>
+        <button type="button" class="icon-btn settings-trigger" aria-label="Apri impostazioni" title="Impostazioni" @click="openSettings"><svg class="icon"><use href="#ico-gear"/></svg><span v-if="updateAvailable" class="update-dot"></span></button>
+      </header>
+
+      <div v-if="blocked" class="global-alert" role="alert">
+        <svg class="icon small"><use href="#ico-info"/></svg><span>{{ storageMessage }}</span>
+        <button type="button" class="text-btn" @click="retryStorage">{{ storageProblem === 'corrupt' ? 'Recupera' : 'Riprova' }}</button>
       </div>
-    </header>
+      <div v-else-if="updateAvailable" class="update-banner"><span>Nuova versione disponibile</span><button type="button" class="text-btn" @click="applyUpdate">Aggiorna</button></div>
 
-    <main class="shell app-main">
-      <div class="mobile-intro">
-        <p class="overline">SCANSIONE NFC</p>
-        <h1>Scansiona i tuoi tag</h1>
-        <p class="intro-copy">Una lettura dopo l'altra, senza interruzioni.</p>
-      </div>
+      <main class="app-main">
+        <section id="panel-reader" v-show="tab === 'reader'" role="tabpanel" aria-labelledby="tab-reader" class="reader-panel" :class="[running ? 'is-running' : '', flash ? 'flash-' + flash : '']">
+          <div class="panel-heading"><span class="eyebrow">SCANSIONE CONTINUA</span><span class="status-chip" :class="{active: running, starting: scanState === 'starting'}"><span class="status-dot"></span>{{ statusLabel }}</span></div>
 
-      <div class="main-grid">
-        <section class="scan-card" :class="{'scanning': isRunning, 'success-pulse': recentSuccess}" aria-label="Lettore NFC">
-          <div class="scan-card-top">
-            <span class="eyebrow">LETTORE</span>
-            <span class="status-chip" :class="statusClass"><span class="status-dot"></span>{{ statusLabel }}</span>
-          </div>
-
-          <div class="scanner-visual" :class="{'visual-active': isRunning}" aria-hidden="true">
-            <div class="scanner-outer"></div><div class="scanner-middle"></div><div class="scanner-inner"></div>
-            <div class="scanner-phone"><svg class="icon"><use href="#ico-phone"/></svg><svg class="icon scanner-waves"><use href="#ico-wave"/></svg></div>
-            <span class="scanner-ping"></span>
-          </div>
-          <div class="scan-content" role="status" aria-live="polite">
-            <h2>{{ scanTitle }}</h2>
-            <p>{{ scanSubtitle }}</p>
-          </div>
-
-          <div v-if="lastEntry" class="last-read" :class="{'last-read-highlight': recentSuccess}">
-            <span class="last-read-icon"><svg class="icon small"><use href="#ico-check"/></svg></span>
-            <span class="last-read-text"><small>Ultimo tag</small><strong>{{ lastEntry.uid || 'UID non disponibile' }}</strong></span>
-            <time :datetime="lastEntry.timestamp">{{ formattedTime(lastEntry.timestamp) }}</time>
-          </div>
-
-          <button class="scan-btn" :class="{'scan-btn-stop': isRunning}" type="button" :disabled="!supported" @click="toggleScan">
-            <svg class="icon"><use :href="isRunning ? '#ico-stop' : '#ico-scan'"/></svg>
-            <span>{{ isRunning ? 'Ferma scansione' : 'Avvia scansione' }}</span>
-          </button>
-          <p class="scan-hint"><svg class="icon small"><use href="#ico-info"/></svg>
-            {{ isRunning ? 'Tieni l’app aperta e avvicina i tag uno dopo l’altro.' : 'Premi una volta per iniziare la lettura continua.' }}
-          </p>
-          <div v-if="!supported" class="support-warning">
-            Web NFC richiede Chrome su Android, NFC attivo e HTTPS. I tag devono essere compatibili NDEF.
-          </div>
-        </section>
-
-        <section class="records-card" aria-label="Tag acquisiti">
-          <div class="records-heading">
-            <div class="records-heading-left"><span class="records-icon"><svg class="icon"><use href="#ico-list"/></svg></span>
-              <div><h2>Tag acquisiti <span class="count-pill">{{ entries.length }}</span></h2><p>Salvati automaticamente sul telefono</p></div>
+          <div class="scan-stage">
+            <div class="scanner" :class="{'scanner-active': running}" aria-hidden="true">
+              <div class="scanner-ring ring-outer"></div><div class="scanner-ring ring-inner"></div>
+              <div class="scanner-center"><svg class="icon scanner-phone"><use href="#ico-phone"/></svg><svg class="icon scanner-wave"><use href="#ico-wave"/></svg></div>
+              <span class="scanner-badge"><svg class="icon small"><use :href="flash ? iconFor(flash) : '#ico-nfc'"/></svg></span>
             </div>
-          </div>
-          <div v-if="entries.length" class="list-toolbar">
-            <label class="searchbox"><svg class="icon"><use href="#ico-search"/></svg>
-              <input type="search" aria-label="Cerca tra i tag" placeholder="Cerca un tag..." v-model="search" @input="visibleLimit = 60" autocomplete="off">
-            </label>
-            <button class="icon-btn trash-all" type="button" title="Svuota elenco" aria-label="Svuota tutti i tag" @click="askClear">
-              <svg class="icon"><use href="#ico-trash"/></svg>
-            </button>
+            <div class="reader-copy"><h1>{{ readerTitle }}</h1><p>{{ readerSubtitle }}</p></div>
           </div>
 
-          <div v-if="!entries.length" class="empty-state">
-            <span class="empty-icon"><svg class="icon"><use href="#ico-tag"/></svg></span>
-            <strong>Ancora nessun tag</strong>
-            <p>Avvia la scansione e avvicina il primo tag NFC al telefono. Lo troverai qui.</p>
-          </div>
-          <div v-else-if="!filteredEntries.length" class="empty-state no-results">
-            <span class="empty-icon"><svg class="icon"><use href="#ico-search"/></svg></span>
-            <strong>Nessun risultato</strong><p>Prova a cercare un altro UID o contenuto.</p>
-          </div>
-          <div v-else class="tag-list">
-            <article v-for="entry in visibleEntries" :key="entry.id" class="tag-item">
-              <span class="tag-index">{{ padNumber(entry.number) }}</span>
-              <div class="tag-main"><strong :title="entry.uid || 'UID non disponibile'">{{ entry.uid || 'UID non disponibile' }}</strong>
-                <span class="tag-content" :title="entry.content || ''">{{ entry.content || 'Tag NFC' }}</span>
-                <time :datetime="entry.timestamp">{{ formattedTime(entry.timestamp) }}</time>
+          <div class="reader-bottom">
+            <div class="stats" aria-label="Riepilogo delle letture">
+              <div><strong>{{ entries.length }}</strong><span>Tag salvati</span></div>
+              <div title="Doppioni rilevati dall'apertura dell'app"><strong :class="{'has-duplicates': duplicates}">{{ duplicates }}</strong><span>Doppioni</span></div>
+              <div title="Errori NFC dall'apertura dell'app"><strong :class="{'has-errors': errors}">{{ errors }}</strong><span>Errori</span></div>
+            </div>
+            <div class="last-card" :class="'last-' + lastCard.kind" role="status" aria-live="polite" aria-atomic="true">
+              <span class="last-icon"><svg class="icon"><use :href="iconFor(lastCard.kind)"/></svg></span>
+              <div class="last-text"><div class="last-top"><span>{{ lastCard.title }}</span><time v-if="lastCard.timestamp" :datetime="lastCard.timestamp">{{ formattedTime(lastCard.timestamp) }}</time></div>
+                <strong v-if="lastCard.uid" class="mono" :title="lastCard.uid">{{ lastCard.uid }}</strong>
+                <p v-if="lastCard.message">{{ lastCard.message }}</p>
               </div>
-              <div class="tag-buttons">
-                <button class="icon-btn item-action" type="button" :disabled="!entry.uid" title="Copia UID" :aria-label="'Copia UID del tag ' + entry.number" @click="copyUid(entry)"><svg class="icon"><use href="#ico-copy"/></svg></button>
-                <button class="icon-btn item-action delete" type="button" title="Elimina tag" :aria-label="'Elimina tag ' + entry.number" @click="removeEntry(entry.id)"><svg class="icon"><use href="#ico-close"/></svg></button>
-              </div>
-            </article>
-            <button v-if="moreToShow" class="load-more" type="button" @click="visibleLimit += 60">Mostra altri {{ filteredEntries.length - visibleLimit }} tag <svg class="icon small"><use href="#ico-chevron"/></svg></button>
+            </div>
+            <button type="button" class="scan-btn" :class="{'stop-btn': running}" :disabled="!running && !canStart" @click="toggleScan"><svg class="icon"><use :href="running ? '#ico-stop' : '#ico-scan'"/></svg>{{ running ? (scanState === 'starting' ? 'Annulla attivazione' : 'Ferma scansione') : 'Avvia scansione' }}</button>
+            <p class="scan-hint">{{ readerHint }}</p>
           </div>
-          <div class="records-foot"><svg class="icon small"><use href="#ico-shield"/></svg> Nessun cloud, nessun account.</div>
         </section>
-      </div>
-      <p class="footer-note">NFC Reader <span class="footer-dot"></span> v1.1.0 · Web NFC / NDEF</p>
-    </main>
 
-    <div class="export-dock">
-      <div class="shell export-inner">
-        <div class="export-description"><svg class="icon"><use href="#ico-download"/></svg>
-          <span><strong>Esporta elenco</strong><small>{{ includeNumber ? 'Con progressivo' : 'Senza progressivo' }} · {{ entries.length }} tag</small></span>
-        </div>
-        <div class="export-buttons">
-          <button class="export-btn csv" type="button" :disabled="!entries.length" @click="download('csv')"><svg class="icon small"><use href="#ico-file"/></svg> CSV</button>
-          <button class="export-btn txt" type="button" :disabled="!entries.length" @click="download('txt')"><svg class="icon small"><use href="#ico-file"/></svg> TXT</button>
-        </div>
-      </div>
+        <section id="panel-history" v-show="tab === 'history'" role="tabpanel" aria-labelledby="tab-history" class="history-panel">
+          <div class="history-heading"><div><span class="eyebrow">IL TUO ARCHIVIO</span><h1>Storico <span class="count-badge">{{ entries.length }}</span></h1></div><button type="button" class="icon-btn" :disabled="!entries.length || blocked" aria-label="Svuota storico" title="Svuota storico" @click="askClear"><svg class="icon"><use href="#ico-trash"/></svg></button></div>
+          <div v-if="running" class="history-scan-status"><span><span class="status-dot"></span>Scansione {{ scanState === 'starting' ? 'in attivazione' : 'attiva' }}</span><button type="button" class="text-btn" @click="stopScan">Ferma</button></div>
+          <div class="searchbox"><svg class="icon small"><use href="#ico-search"/></svg><input type="search" v-model="search" @input="visibleLimit = 50" placeholder="Cerca UID o contenuto" aria-label="Cerca nello storico" autocomplete="off" spellcheck="false"><button v-if="search" type="button" class="icon-btn search-clear" aria-label="Cancella ricerca" @click="search = ''"><svg class="icon small"><use href="#ico-close"/></svg></button></div>
+
+          <div class="history-scroll" ref="historyList" tabindex="0" aria-label="Elenco dei tag salvati">
+            <div v-if="!entries.length" class="empty-state"><div class="empty-icon"><svg class="icon"><use href="#ico-history"/></svg></div><h2>Nessun tag, per ora.</h2><p>Le prossime letture saranno qui,<br>in ordine dalla pi&ugrave; recente.</p><button type="button" class="text-btn" @click="setTab('reader', true)">Vai al lettore <svg class="icon small"><use href="#ico-chevron"/></svg></button></div>
+            <div v-else-if="!filteredEntries.length" class="empty-state"><div class="empty-icon"><svg class="icon"><use href="#ico-search"/></svg></div><h2>Nessun risultato</h2><p>Prova un altro UID o contenuto.</p><button type="button" class="text-btn" @click="search = ''">Mostra tutti i tag</button></div>
+            <template v-else>
+              <div class="list-label"><span>{{ search ? filteredEntries.length + ' risultati' : 'Più recenti' }}</span><span>UID / DATA</span></div>
+              <article class="tag-row" v-for="entry in visibleEntries" :key="entry.id">
+                <button type="button" class="tag-open" :aria-label="'Apri dettaglio tag ' + entry.number" @click="openDetail(entry)"><span class="tag-number">{{ padNumber(entry.number) }}</span><span class="tag-info"><strong class="mono">{{ entry.uid || 'UID non disponibile' }}</strong><span class="tag-summary">{{ entry.content || 'Tag NFC' }}</span><time :datetime="entry.timestamp">{{ formattedShortDate(entry.timestamp) }}</time></span></button>
+                <button type="button" class="icon-btn row-copy" :disabled="!entry.uid" :aria-label="'Copia UID del tag ' + entry.number" title="Copia UID" @click="copyUid(entry)"><svg class="icon small"><use href="#ico-copy"/></svg></button>
+              </article>
+              <button v-if="moreEntries" type="button" class="load-more" @click="visibleLimit += 50">Mostra altri tag <svg class="icon small"><use href="#ico-chevron"/></svg></button>
+              <p class="end-list">{{ visibleEntries.length }} di {{ filteredEntries.length }} letture</p>
+            </template>
+          </div>
+
+          <div class="export-bar">
+            <div class="export-options"><span>Esporta tutti <small>{{ entries.length }} tag</small></span><label class="number-option"><input type="checkbox" v-model="includeNumber" @change="saveSettings">Con progressivo</label></div>
+            <div class="export-buttons"><button type="button" class="btn btn-primary" :disabled="!entries.length" @click="download('csv')"><svg class="icon small"><use href="#ico-download"/></svg>Esporta CSV</button><button type="button" class="btn btn-secondary" :disabled="!entries.length" @click="download('txt')"><svg class="icon small"><use href="#ico-download"/></svg>Esporta TXT</button></div>
+          </div>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" role="tablist" aria-label="Sezioni dell'app" @keydown="tabKeydown">
+        <button id="tab-reader" type="button" role="tab" aria-controls="panel-reader" :aria-selected="tab === 'reader'" :tabindex="tab === 'reader' ? 0 : -1" :class="{selected: tab === 'reader'}" @click="setTab('reader')"><span class="nav-icon"><svg class="icon"><use href="#ico-scan"/></svg><span v-if="running" class="nav-live-dot"></span></span><span>Lettore</span></button>
+        <button id="tab-history" type="button" role="tab" aria-controls="panel-history" :aria-selected="tab === 'history'" :tabindex="tab === 'history' ? 0 : -1" :class="{selected: tab === 'history'}" @click="setTab('history')"><span class="nav-icon"><svg class="icon"><use href="#ico-history"/></svg><span v-if="entries.length" class="nav-count">{{ entries.length > 99 ? '99+' : entries.length }}</span></span><span>Storico</span></button>
+      </nav>
     </div>
 
-    <transition name="fade">
-      <div v-if="settingsOpen" class="modal-layer" @click.self="closeSettings">
-        <section class="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" ref="settingsDialog">
-          <div class="sheet-handle"></div>
-          <div class="sheet-head"><div><span class="sheet-caption">PERSONALIZZA</span><h2 id="settings-title">Impostazioni</h2></div>
-            <button type="button" class="icon-btn close-settings" title="Chiudi impostazioni" aria-label="Chiudi impostazioni" @click="closeSettings" ref="settingsClose"><svg class="icon"><use href="#ico-close"/></svg></button>
+    <dialog ref="dialog" class="app-dialog" :class="{'settings-dialog': modal === 'settings'}" aria-labelledby="dialog-title" @cancel.prevent="closeDialog" @click="onBackdrop" @keydown="onDialogKeydown">
+      <div class="dialog-wrap">
+        <header class="dialog-heading"><h2 id="dialog-title">{{ {settings: 'Impostazioni', detail: 'Dettaglio tag', delete: 'Eliminare questo tag?', clear: 'Svuotare lo storico?', repair: 'Recupera archivio'}[modal] || '' }}</h2><button type="button" class="icon-btn" aria-label="Chiudi finestra" @click="closeDialog"><svg class="icon"><use href="#ico-close"/></svg></button></header>
+
+        <template v-if="modal === 'settings'">
+          <div class="segmented settings-tabs" role="group" aria-label="Sezioni impostazioni"><button type="button" :aria-pressed="settingsTab === 'reading'" :class="{selected: settingsTab === 'reading'}" @click="settingsTab = 'reading'">Lettura</button><button type="button" :aria-pressed="settingsTab === 'app'" :class="{selected: settingsTab === 'app'}" @click="settingsTab = 'app'">App</button></div>
+          <div class="dialog-content settings-content">
+            <div v-if="settingsTab === 'reading'" class="settings-reading">
+              <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-volume"/></svg></span><span><strong>Suono di lettura</strong><small>Conferma un nuovo tag salvato</small></span><input type="checkbox" role="switch" class="switch" v-model="soundEnabled" @change="onSettingsChange" aria-label="Suono di lettura"></label>
+              <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-duplicate"/></svg></span><span><strong>Suoni di avviso</strong><small>Segnali distinti per doppioni ed errori</small></span><input type="checkbox" role="switch" class="switch" v-model="alertSoundEnabled" @change="onSettingsChange" aria-label="Suoni di avviso"></label>
+              <div class="sound-controls"><label class="volume-label" for="volume">Volume <span>{{ volume }}%</span></label><input id="volume" type="range" min="0" max="100" step="5" v-model.number="volume" @change="onSettingsChange" aria-label="Volume dei suoni"><div class="sound-tests" role="group" aria-label="Prova i suoni"><button type="button" @click="testSound('success')" aria-label="Prova suono lettura"><svg class="icon tiny"><use href="#ico-check"/></svg>Lettura</button><button type="button" @click="testSound('duplicate')" aria-label="Prova suono doppione"><svg class="icon tiny"><use href="#ico-duplicate"/></svg>Doppione</button><button type="button" @click="testSound('error')" aria-label="Prova suono errore"><svg class="icon tiny"><use href="#ico-info"/></svg>Errore</button></div></div>
+              <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-vibrate"/></svg></span><span><strong>Vibrazione</strong><small>Se disponibile sul telefono</small></span><input type="checkbox" role="switch" class="switch" v-model="vibrationEnabled" @change="onSettingsChange" aria-label="Vibrazione"></label>
+              <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-tag"/></svg></span><span><strong>Ignora doppioni</strong><small>Li segnala, senza salvarli di nuovo</small></span><input type="checkbox" role="switch" class="switch" v-model="ignoreDuplicates" @change="onSettingsChange" aria-label="Ignora doppioni"></label>
+              <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-keep"/></svg></span><span><strong>Schermo acceso</strong><small>{{ wakeUnavailable && keepScreenAwake ? 'Non disponibile: tieni lo schermo attivo' : 'Solo durante la scansione, se supportato' }}</small></span><input type="checkbox" role="switch" class="switch" v-model="keepScreenAwake" @change="onSettingsChange" aria-label="Schermo acceso"></label>
+            </div>
+            <div v-else class="settings-app">
+              <h3 class="section-label">ASPETTO</h3><div class="segmented theme-options" role="group" aria-label="Tema dell'app"><button type="button" :class="{selected: theme === 'auto'}" :aria-pressed="theme === 'auto'" @click="setTheme('auto')">Sistema</button><button type="button" :class="{selected: theme === 'light'}" :aria-pressed="theme === 'light'" @click="setTheme('light')">Chiaro</button><button type="button" :class="{selected: theme === 'dark'}" :aria-pressed="theme === 'dark'" @click="setTheme('dark')">Scuro</button></div>
+              <div class="app-info-card"><svg class="icon"><use href="#ico-install"/></svg><div><strong>{{ installed ? 'App installata' : 'Aggiungi alla schermata Home' }}</strong><p v-if="!installed">{{ installPrompt ? 'Aprila come un’app, senza la barra del browser.' : 'Dal menu di Chrome scegli Installa app o Aggiungi a schermata Home.' }}</p><p v-else>Pronta dalla schermata Home.</p><button v-if="installPrompt && !installed" type="button" class="btn btn-small btn-secondary" @click="installApp">Installa app</button></div></div>
+              <div class="app-info-card"><svg class="icon"><use href="#ico-shield"/></svg><div><strong>I tag restano qui</strong><p>Nessun account o invio a servizi esterni. Esporta lo storico prima di cancellare i dati del browser.</p><small>{{ offlineReady ? 'Interfaccia disponibile anche offline.' : offlineFailed ? 'Cache offline non disponibile: riprova online.' : 'Preparazione della cache offline...' }}</small></div></div>
+              <div class="compatibility-note"><strong>Chrome su Android &middot; NFC &middot; HTTPS</strong><p>Tag compatibili NDEF, app visibile e schermo sbloccato. UID non sempre disponibile. Senza UID i doppioni sono confrontati per contenuto NDEF.</p><p>I contatori Doppioni ed Errori si riferiscono all'apertura corrente dell'app.</p></div>
+              <button v-if="updateAvailable" type="button" class="btn btn-secondary full-width" @click="applyUpdate"><svg class="icon small"><use href="#ico-refresh"/></svg>Aggiorna app</button>
+            </div>
           </div>
+          <footer class="settings-footer"><span>NFC Reader</span><span>v{{ version }}</span></footer>
+        </template>
 
-          <div class="sheet-scroll">
-            <h3 class="settings-group-label">LETTURA</h3>
-            <label class="setting-row"><span class="setting-leading"><svg class="icon"><use href="#ico-volume"/></svg></span>
-              <span class="setting-label"><strong>Suono alla lettura</strong><small>Un breve segnale a ogni tag aggiunto</small></span>
-              <input class="switch" type="checkbox" v-model="soundEnabled" @change="onSettingsChange" aria-label="Suono alla lettura">
-            </label>
-            <label class="setting-row"><span class="setting-leading"><svg class="icon"><use href="#ico-vibrate"/></svg></span>
-              <span class="setting-label"><strong>Vibrazione</strong><small>Se supportata dal telefono</small></span>
-              <input class="switch" type="checkbox" v-model="vibrationEnabled" @change="onSettingsChange" aria-label="Vibrazione">
-            </label>
-            <label class="setting-row"><span class="setting-leading"><svg class="icon"><use href="#ico-tag"/></svg></span>
-              <span class="setting-label"><strong>Ignora duplicati</strong><small>Non registrare due volte lo stesso tag</small></span>
-              <input class="switch" type="checkbox" v-model="ignoreDuplicates" @change="onSettingsChange" aria-label="Ignora duplicati">
-            </label>
-            <label class="setting-row"><span class="setting-leading"><svg class="icon"><use href="#ico-keep"/></svg></span>
-              <span class="setting-label"><strong>Schermo sempre acceso</strong><small>Durante la lettura, se disponibile</small></span>
-              <input class="switch" type="checkbox" v-model="keepScreenAwake" @change="onSettingsChange" aria-label="Schermo sempre acceso">
-            </label>
+        <template v-else-if="modal === 'detail' && detail">
+          <div class="dialog-content detail-content"><span class="section-label">UID</span><p class="detail-uid mono">{{ detail.uid || 'Non disponibile' }}</p><span class="section-label">DATA E ORA</span><p>{{ formattedTimestamp(detail.timestamp) }}</p><span class="section-label">ANTEPRIMA NDEF</span><p class="ndef-content">{{ detail.content || 'Nessun contenuto testuale.' }}</p><small class="muted">Anteprima testuale fino a 600 caratteri. Il contenuto non viene eseguito.</small></div>
+          <footer class="dialog-actions"><button type="button" class="btn btn-danger-soft" :disabled="blocked" @click="askDelete"><svg class="icon small"><use href="#ico-trash"/></svg>Elimina</button><button type="button" class="btn btn-primary" :disabled="!detail.uid" @click="copyUid(detail)"><svg class="icon small"><use href="#ico-copy"/></svg>Copia UID</button></footer>
+        </template>
 
-            <h3 class="settings-group-label space-above">ESPORTAZIONE</h3>
-            <label class="setting-row"><span class="setting-leading"><svg class="icon"><use href="#ico-list"/></svg></span>
-              <span class="setting-label"><strong>Numero progressivo</strong><small>Includi la colonna N. in CSV e TXT</small></span>
-              <input class="switch" type="checkbox" v-model="includeNumber" @change="onSettingsChange" aria-label="Numero progressivo">
-            </label>
+        <template v-else-if="modal === 'clear' || modal === 'delete'">
+          <div class="dialog-content confirm-content"><span class="confirm-icon"><svg class="icon"><use href="#ico-trash"/></svg></span><p>{{ modal === 'clear' ? 'Tutte le ' + entries.length + ' letture saranno eliminate da questo dispositivo.' : 'Il tag selezionato sarà rimosso dallo storico.' }}</p><p class="muted">L'operazione non &egrave; reversibile. Esporta prima i dati da conservare.</p></div>
+          <footer class="dialog-actions"><button type="button" class="btn btn-secondary" data-autofocus @click="closeDialog">Annulla</button><button type="button" class="btn btn-danger" @click="modal === 'clear' ? clearAll() : deleteEntry()">{{ modal === 'clear' ? 'Svuota storico' : 'Elimina tag' }}</button></footer>
+        </template>
 
-            <h3 class="settings-group-label space-above">ASPETTO</h3>
-            <div class="theme-setting"><span class="setting-leading"><svg class="icon"><use href="#ico-moon"/></svg></span>
-              <span class="setting-label"><strong>Tema</strong><small>Segui il sistema o scegli un colore</small></span>
-            </div>
-            <div class="theme-options" role="group" aria-label="Tema dell'app">
-              <button type="button" :class="{'selected': theme === 'auto'}" :aria-pressed="theme === 'auto'" @click="setTheme('auto')">Sistema</button>
-              <button type="button" :class="{'selected': theme === 'light'}" :aria-pressed="theme === 'light'" @click="setTheme('light')">Chiaro</button>
-              <button type="button" :class="{'selected': theme === 'dark'}" :aria-pressed="theme === 'dark'" @click="setTheme('dark')">Scuro</button>
-            </div>
-
-            <div class="install-box"><span class="install-box-icon"><svg class="icon"><use href="#ico-install"/></svg></span>
-              <div><strong>Installa NFC Reader</strong><p>{{ installed ? 'App installata sul dispositivo.' : 'Aggiungila alla schermata Home per usarla come un’app.' }}</p>
-                <button v-if="installPrompt && !installed" class="install-action" type="button" @click="installApp">Installa app <svg class="icon small"><use href="#ico-chevron"/></svg></button>
-                <small v-else-if="!installed">Su Chrome: menu ⋮ → Installa app o Aggiungi a schermata Home.</small>
-              </div>
-            </div>
-            <div class="settings-note"><svg class="icon small"><use href="#ico-info"/></svg><span>Le preferenze e i tag restano salvati solo nel browser. La scansione NFC richiede che l'app sia aperta e visibile.</span></div>
-          </div>
-        </section>
+        <template v-else-if="modal === 'repair'">
+          <div class="dialog-content confirm-content"><p>L'archivio contiene dati non leggibili. Sono recuperabili {{ entries.length }} letture.</p><p>Scarica prima la copia originale, poi ripristina l'archivio conservando i tag recuperabili.</p><button type="button" class="btn btn-secondary full-width" @click="downloadRecovery"><svg class="icon small"><use href="#ico-download"/></svg>Copia originale</button></div><footer class="dialog-actions"><button type="button" class="btn btn-secondary" @click="closeDialog">Annulla</button><button type="button" class="btn btn-primary" :disabled="!recoveryDownloaded" @click="repairArchive">Ripristina</button></footer>
+        </template>
+        <div v-if="toast" class="dialog-notice" role="status">{{ toast.text }}</div>
       </div>
-    </transition>
+    </dialog>
 
-    <transition name="fade">
-      <div v-if="confirmClear" class="modal-layer confirm-layer" @click.self="confirmClear = false">
-        <section class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
-          <span class="confirm-icon"><svg class="icon"><use href="#ico-trash"/></svg></span>
-          <h2 id="confirm-title">Eliminare tutti i tag?</h2>
-          <p id="confirm-desc">Le {{ entries.length }} letture verranno cancellate da questo dispositivo. Esportale prima, se vuoi conservarle.</p>
-          <div class="confirm-actions"><button type="button" class="btn-cancel" @click="confirmClear = false" ref="clearCancel">Annulla</button><button type="button" class="btn-delete" @click="clearAll">Elimina tutti</button></div>
-        </section>
-      </div>
-    </transition>
-
-    <transition name="toast-transition">
-      <div v-if="toastMessage" class="snackbar" :class="'snackbar-' + toastTone" role="status" aria-live="polite"><svg class="icon small"><use :href="toastTone === 'error' ? '#ico-info' : '#ico-check'"/></svg><span>{{ toastMessage }}</span><button type="button" title="Chiudi" aria-label="Chiudi messaggio" @click="toastMessage = ''"><svg class="icon small"><use href="#ico-close"/></svg></button></div>
-    </transition>
+    <div v-if="toast && !modal" class="snackbar" :class="'toast-' + toast.tone" role="status" aria-live="polite"><svg class="icon small"><use :href="iconFor(toast.tone)"/></svg><span>{{ toast.text }}</span></div>
   </div>
-  <noscript>Per usare NFC Reader devi abilitare JavaScript nel browser.</noscript>
-  <script src="./assets/vendor/vue.global.js"></script>
-  <script type="module" src="./assets/js/app.mjs"></script>
+  <noscript><p>Abilita JavaScript per usare NFC Reader.</p></noscript>
+  <script src="./assets/vendor/vue.global.js?v=1.2.0"></script>
+  <script type="module" src="./assets/js/app.mjs?v=1.2.0"></script>
 </body>
 </html>
