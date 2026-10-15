@@ -1,10 +1,10 @@
 import {
   MAX_ENTRIES, REPEAT_DELAY_MS, parseNfcReading, restoreEntries, normalizeUid,
   formattedTime, formattedShortDate, formattedTimestamp, exportCsv, exportTxt, nfcErrorMessage, shareTagText,
-} from './core.mjs?v=1.4.0';
-import {prepareAudio, playSound} from './sound.mjs?v=1.4.0';
+} from './core.mjs?v=1.8.0';
+import {prepareAudio, playSound} from './sound.mjs?v=1.8.0';
 
-const VERSION = '1.4.0';
+const VERSION = '1.8.0';
 // Retain the original keys: upgrading in the same origin preserves the archive.
 const STORAGE_ENTRIES = 'nfc-reader.entries.v1';
 const STORAGE_SETTINGS = 'nfc-reader.settings.v1';
@@ -37,6 +37,10 @@ try {
   if (data && typeof data === 'object' && !Array.isArray(data)) savedSettings = data;
 } catch (_) { /* A broken preference cannot hide an otherwise valid archive. */ }
 const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+const desktopBridge = window.nfcDesktop || null;
+let desktopUnsubscribe = null;
+let writeController = null;
+const desktopMedia = window.matchMedia?.('(min-width: 1024px)');
 
 function newId() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 function fileName(ext) {
@@ -65,6 +69,9 @@ if (!window.Vue) {
       return {
         version: VERSION,
         tab: 'reader',
+        desktopLayout: desktopMedia?.matches ?? window.innerWidth >= 1024,
+        desktopStatus: {available: !!desktopBridge, readers: [], error: ''},
+        writeKind: 'text', writeValue: '', writeConfirmed: false, writeState: 'idle', writeMessage: '',
         entries: initialEntries,
         search: '',
         visibleLimit: PAGE_SIZE,
@@ -107,31 +114,49 @@ if (!window.Vue) {
       };
     },
     computed: {
-      supported() { return window.isSecureContext && typeof window.NDEFReader === 'function'; },
+      isDesktop() { return !!desktopBridge; },
+      connectedReaderLabel() {
+        if (!this.isDesktop) return '';
+        if (!this.desktopStatus.available) return this.desktopStatus.error || 'Sistema PC/SC non disponibile';
+        return this.desktopStatus.readers.length ? this.desktopStatus.readers.join(' · ') : 'Collega un lettore USB PC/SC';
+      },
+      supported() { return this.isDesktop ? this.desktopStatus.available : (window.isSecureContext && typeof window.NDEFReader === 'function'); },
+      webWriteSupported() {return this.isDesktop || (window.isSecureContext && typeof window.NDEFReader === 'function' && typeof window.NDEFReader.prototype.write === 'function');},
+      writeBytes() { return new TextEncoder().encode(this.writeValue).length; },
+      writeValid() {
+        const value=this.writeValue.trim(); if (!value || value.length > 500 || this.writeBytes > 250) return false;
+        if (this.writeKind==='url') { try { const url=new URL(value); return ['http:','https:'].includes(url.protocol); } catch (_) {return false;} }
+        return true;
+      },
+      canWrite() {return this.writeConfirmed && this.writeValid && this.writeState !== 'waiting' &&
+        (this.isDesktop ? this.desktopStatus.available && this.desktopStatus.readers.length > 0 : this.webWriteSupported);},
       running() { return this.scanState !== 'idle'; },
       blocked() { return !!this.storageProblem || this.externalConflict; },
-      canStart() { return this.supported && !this.blocked && this.entries.length < MAX_ENTRIES; },
+      canStart() { return this.supported && (!this.isDesktop || this.desktopStatus.readers.length > 0) && !this.blocked && this.entries.length < MAX_ENTRIES && this.writeState!=='waiting'; },
       statusLabel() {
         if (!this.supported) return 'Non supportato';
+        if (this.isDesktop && !this.desktopStatus.readers.length) return 'Lettore assente';
         if (this.scanState === 'starting') return 'Attivazione';
         return this.running ? (this.hidden ? 'In pausa' : 'In ascolto') : 'Pronto';
       },
       readerTitle() {
-        if (!this.supported) return 'Usa un telefono NFC';
+        if (!this.supported) return this.isDesktop ? 'PC/SC non disponibile' : 'Usa un telefono NFC';
+        if (this.isDesktop && !this.desktopStatus.readers.length) return 'Collega lettore USB';
         if (this.blocked) return 'Controlla l\u2019archivio';
         if (this.entries.length >= MAX_ENTRIES) return 'Archivio completo';
         if (this.scanState === 'starting') return 'Attivazione NFC';
         return this.running ? 'Avvicina un tag' : (this.singleMode ? 'Lettura singola' : 'Pronto alla lettura');
       },
       readerSubtitle() {
-        if (!this.supported) return 'Apri questa app con Chrome su Android.';
+        if (!this.supported) return this.isDesktop ? (this.desktopStatus.error||'Impossibile accedere al lettore PC/SC.') : 'Apri questa app con Chrome su Android.';
+        if (this.isDesktop && !this.desktopStatus.readers.length) return 'Collega un lettore NFC PC/SC e avvicina il tag.';
         if (this.blocked) return 'Esporta i tag e risolvi l\u2019avviso in alto.';
         if (this.entries.length >= MAX_ENTRIES) return 'Esporta e svuota lo storico per continuare.';
         if (this.scanState === 'starting') return 'Consenti l\u2019accesso NFC, se richiesto.';
         return this.running ? (this.singleMode ? 'Dopo la lettura vedrai tutti i dati.' : 'Un tag dopo l\u2019altro, senza premere altro.') : (this.singleMode ? 'Una lettura alla volta, con dettagli automatici.' : 'Premi Avvia per iniziare la raccolta.');
       },
       readerHint() {
-        if (!this.supported) return 'NFC attivo, sito HTTPS e tag NDEF.';
+        if (!this.supported) return this.isDesktop ? 'Controlla driver e servizio Smart Card di Windows.' : 'NFC attivo, sito HTTPS e tag NDEF.';
         if (this.running && this.keepScreenAwake && this.wakeActive) return 'Schermo mantenuto acceso durante la lettura.';
         return this.running ? 'Tieni l\u2019app visibile e lo schermo sbloccato.' : (this.singleMode ? 'Si fermerà automaticamente dopo un tag.' : 'Le letture restano salvate su questo dispositivo.');
       },
@@ -163,6 +188,10 @@ if (!window.Vue) {
     },
     mounted() {
       this.applyTheme();
+      if (desktopBridge) {
+        desktopUnsubscribe = desktopBridge.onEvent(event => this.onDesktopEvent(event));
+        desktopBridge.getStatus().then(status => {if (status) this.desktopStatus=status;}).catch(()=>{});
+      }
       document.addEventListener('visibilitychange', this.onVisibility);
       window.addEventListener('pagehide', this.stopScan);
       window.addEventListener('beforeunload', this.beforeUnload);
@@ -170,10 +199,13 @@ if (!window.Vue) {
       window.addEventListener('beforeinstallprompt', this.onInstallAvailable);
       window.addEventListener('appinstalled', this.onAppInstalled);
       media?.addEventListener?.('change', this.onSystemTheme);
+      desktopMedia?.addEventListener?.('change', this.onDesktopLayoutChange);
       this.registerWorker();
     },
     beforeUnmount() {
       this.stopScan();
+      this.cancelWrite();
+      desktopUnsubscribe?.();desktopUnsubscribe=null;
       clearTimeout(toastTimer);
       clearTimeout(feedbackTimer);
       document.removeEventListener('visibilitychange', this.onVisibility);
@@ -183,19 +215,81 @@ if (!window.Vue) {
       window.removeEventListener('beforeinstallprompt', this.onInstallAvailable);
       window.removeEventListener('appinstalled', this.onAppInstalled);
       media?.removeEventListener?.('change', this.onSystemTheme);
+      desktopMedia?.removeEventListener?.('change', this.onDesktopLayoutChange);
     },
     methods: {
       formattedTime, formattedShortDate, formattedTimestamp,
       padNumber(n) { return String(n).padStart(2, '0'); },
       iconFor(kind) { return {success: '#ico-check', duplicate: '#ico-duplicate', error: '#ico-info'}[kind] || '#ico-tag'; },
+      onDesktopLayoutChange(event) { this.desktopLayout = event.matches; },
+      onDesktopEvent(event) {
+        if (!event || typeof event.type!=='string') return;
+        if (event.type==='status') { this.desktopStatus={available:!!event.available,readers:event.readers||[],error:event.error||''}; return; }
+        if (event.type==='write-result') {
+          this.writeState=event.ok?'success':'error';
+          this.writeMessage=event.ok?`Tag scritto e verificato${event.uid?' · '+event.uid:''}.`:(event.message||'Errore scrittura.');
+          if (event.ok) {this.writeConfirmed=false;this.emitFeedback('success','Scrittura completata');}
+          else this.emitFeedback('error','Scrittura non riuscita',this.writeMessage);
+          return;
+        }
+        if (event.type==='reading' && this.running) {
+          const converted=(event.records||[]).map(r=>({...r,data:Uint8Array.from(r.data||[])}));
+          this.handleReading({serialNumber:event.uid||'',message:{records:converted}});
+        }
+      },
+      chooseWriteKind(kind) {this.writeKind=kind;this.writeValue='';this.resetWriteApproval();},
+      resetWriteApproval(){this.writeConfirmed=false;if(this.writeState!=='waiting'){this.writeState='idle';this.writeMessage='';}},
+      startWrite(){
+        if(!this.canWrite)return;
+        if(this.running)this.stopScan();
+        if (this.soundEnabled||this.alertSoundEnabled) prepareAudio();
+        const data={kind:this.writeKind,value:this.writeValue.trim()};
+        this.writeMessage='Avvicina ora il tag da programmare.';this.writeState='waiting';
+        if(desktopBridge){
+          desktopBridge.startWrite(data).then(result=>{
+            if(result?.ok)return;
+            this.writeState='error';this.writeMessage=result?.message||'Lettore PC/SC non disponibile.';
+            this.emitFeedback('error','Scrittura non avviata',this.writeMessage);
+          }).catch(err=>{this.writeState='error';this.writeMessage=err?.message||'Errore PC/SC.';});
+          return;
+        }
+        try {
+          const controller=new AbortController();writeController=controller;
+          const writer=new window.NDEFReader();
+          const message={records:[data.kind==='url'?{recordType:'url',data:data.value}:{recordType:'text',data:data.value,lang:'it',encoding:'utf-8'}]};
+          // Must be invoked synchronously inside the user's click (Web NFC activation).
+          const writing=writer.write(message,{overwrite:true,signal:controller.signal});
+          Promise.resolve(writing).then(()=>{
+            if(writeController!==controller)return;
+            writeController=null;this.writeState='success';this.writeConfirmed=false;this.writeMessage='Scrittura completata. Puoi rileggere il tag per verificarlo.';
+            this.emitFeedback('success','Tag scritto');
+          }).catch(error=>{
+            if(writeController!==controller)return;
+            writeController=null;this.writeState='error';this.writeMessage=error?.name==='NotAllowedError'?'Permesso NFC negato.':error?.name==='NotSupportedError'?'Tag non supportato o protetto.':(error?.message||'Scrittura NFC non riuscita.');
+            this.emitFeedback('error','Scrittura non riuscita',this.writeMessage);
+          });
+        }catch(error){writeController=null;this.writeState='error';this.writeMessage=error?.message||'Scrittura NFC non disponibile.';this.emitFeedback('error','Scrittura non riuscita',this.writeMessage);}
+      },
+      async cancelWrite(){
+        if (writeController){writeController.abort();writeController=null;}
+        if(desktopBridge){
+          try {const result=await desktopBridge.cancelWrite();if(result&&!result.ok){this.writeMessage=result.message;return;}}catch(_){ }
+        }
+        if(this.writeState==='waiting'){this.writeState='idle';this.writeMessage='Scrittura annullata.';}
+      },
       setTab(tab, focus = false) {
+        if(tab==='writer' && this.running)this.stopScan();
         this.tab = tab;
-        if (focus) this.$nextTick(() => document.getElementById(`tab-${tab}`)?.focus());
+        if (focus) this.$nextTick(() => {
+          const target = this.desktopLayout ? document.getElementById(`panel-${tab}`) : document.getElementById(`tab-${tab}`);
+          target?.focus({preventScroll: true});
+        });
       },
       tabKeydown(event) {
         if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
           event.preventDefault();
-          this.setTab(event.key === 'Home' ? 'reader' : event.key === 'End' ? 'history' : this.tab === 'reader' ? 'history' : 'reader', true);
+          const tabs=['reader','writer','history'];const i=tabs.indexOf(this.tab);
+          this.setTab(event.key==='Home'?'reader':event.key==='End'?'history':tabs[(i+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length],true);
         }
       },
       notify(text, tone = 'neutral') {
@@ -235,6 +329,13 @@ if (!window.Vue) {
         scanController = controller;
         this.scanState = 'starting';
         const current = () => scanController === controller && !controller.signal.aborted;
+        if (desktopBridge) {
+          desktopBridge.startScan().then(result=>{if (!current()) return;
+            if (!result?.ok){this.stopScan();this.reportReadError(result?.message||'Lettore USB non disponibile.');}
+            else {this.scanState='active';}
+          }).catch(error=>{if(current()){this.stopScan();this.reportReadError(error?.message||'Errore PC/SC.');}});
+          return;
+        }
         try {
           const reader = new window.NDEFReader();
           reader.addEventListener('reading', event => {
@@ -263,6 +364,7 @@ if (!window.Vue) {
         scanController = null;
         if (controller && !controller.signal.aborted) controller.abort();
         this.scanState = 'idle';
+        if (desktopBridge) desktopBridge.stopScan().catch(()=>{});
         this.releaseWakeLock();
       },
       toggleScan() { if (this.running) this.stopScan(); else this.startScan(); },
@@ -598,7 +700,7 @@ if (!window.Vue) {
       },
       onAppInstalled() { this.installed = true; this.installPrompt = false; installEvent = null; },
       async registerWorker() {
-        if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+        if (desktopBridge || !('serviceWorker' in navigator) || !window.isSecureContext) return;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
           this.offlineReady = true;
           if (updateRequested) location.reload();

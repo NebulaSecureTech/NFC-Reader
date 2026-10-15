@@ -1,27 +1,20 @@
-# Report test - NFC Reader v1.4.0
+# NFC Reader 1.8.0 - risultati e collaudi
 
-**Ambiente:** Node.js 22, Chromium headless tramite Playwright, Vue 3/DOM/CSS reali con Web NFC/Web Share, audio e storage simulati.
+## Test eseguiti
 
-| Verifica | Esito |
-| --- | --- |
-| Test unitari e PWA simulate | **36 / 36 superati** |
-| Scenari UI Chromium | **37 / 37 superati** |
-| Condividi in alto nello Storico | Visibile anche a **320px**, senza sovrapposizioni; pulsantiera inferiore rimossa |
-| Modale export | CSV/TXT, progressivo, Scarica e Condividi; azioni raggiungibili su 320x568 |
-| Dati in esportazione | Intero registro, anche con ricerca applicata; fallback download se condivisione nativa assente |
-| Web Share (mock) | CSV e TXT come file, condivisione tag e fallback |
-| Record tecnici | Accordion nativo chiuso di default, HEX annidato espandibile; riapertura di un tag reimposta lo stato |
-| Compatibilita archivio precedente | Preservate le stesse chiavi localStorage |
-| Lettore non scorre | 12 viewport da 320 a 1280 px, portrait e landscape |
-| Errore JavaScript nei test browser | Nessuno |
-| NFC fisico su Android e condivisione nativa reale | **Da verificare su dispositivo** |
-| Installazione PWA/offline su GitHub Pages reale | **Da verificare sul sito pubblicato** |
+**57 test JavaScript superati**: 36 per Web/PWA e 21 per Electron, protocollo WinSCard simulato e packaging. Nessun test su lettore fisico eseguito.
 
-Il test browser usa Vue, HTML e CSS reali in Chromium, ma gli eventi NFC e le chiamate piattaforma sono simulati: non sostituisce un collaudo fisico. Il service worker e' controllato da test unitari con precache simulata; nell'ambiente di sviluppo la navigazione HTTP localhost e' bloccata, per cui non e' stato possibile eseguire un vero collaudo offline end-to-end.
+- `node --test tests/*.test.mjs`: parser/esportazione, PWA, suoni e cache.
+- `cd electron && npm test`: codec NDEF Type 2, APDU `FF CA/B0/D6`, gestione UID, blocco scrittura su lettori non supportati, inserimento/rimozione simulati, protocollo del bridge, errori PC/SC e annullamenti.
+- GitHub Actions Windows compila `NfcPcscBridge.cs` tramite Windows PowerShell 5.1, poi verifica che il file sia disponibile, esegue i test e costruisce un solo `.exe` portable.
 
-Esecuzione dei test inclusi nello ZIP Sorgenti:
+## Collaudi ancora necessari
 
-```sh
-node --test tests/*.test.mjs
-python tests/browser_smoke.py
-```
+1. Verificare l'esito della prima workflow GitHub Actions su `windows-latest` e l'esistenza di `NFC-Reader-Portable-1.8.0-x64.exe`.
+2. Avviare l'EXE su Windows 10/11 x64 con lettore PC/SC collegato; verificare enumerazione, inserimento e rimozione tag e lettura UID.
+3. Verificare eventuali limitazioni dovute ad antivirus e SmartScreen sull'esecuzione del bridge incorporato.
+4. Su ACR122U reale, provare lettura Type 2 e scrittura con un tag NDEF di test sacrificabile, poi rileggere su Android.
+5. Verificare lettura singola, lettura continua, gestione duplicati, esportazione CSV/TXT e storico persistente.
+6. Verificare funzionalità della PWA su Android reale dopo aggiornamento dalla versione precedente.
+
+**I test JavaScript e la compilazione del frontend non equivalgono a un collaudo hardware reale.**

@@ -1,30 +1,44 @@
-# Changelog NFC Reader
+# Changelog
 
-## 1.4.0 - 15 ottobre 2026
-- Unico pulsante **Condividi** nell'intestazione dello Storico; eliminata la barra di esportazione in basso per liberare spazio verticale.
-- Modale per scegliere CSV/TXT, progressivo, download e condivisione nativa con fallback coerente al formato selezionato.
-- Record NDEF e dati tecnici ora dentro un accordion nativo chiuso per default; il riepilogo resta visibile senza espandere.
-- Mantenimento della v1.3.0 e degli archivi localStorage precedenti; cache PWA aggiornata alla v1.4.0.
-- Test browser per modal export, Web Share CSV e TXT, accordion e viewport da 320 px.
+## v1.8.0 · 15 ottobre 2026
 
-## 1.3.0 - 15 ottobre 2026
-- Nuovo switch **Lettura singola** persistente, continua come modalita' predefinita.
-- Stop automatico e apertura dettagli dopo una lettura singola, compresi i doppioni ignorati.
-- Scheda **Dettaglio tag** estesa con UID, data/ora, conteggio e byte NDEF, record types, MIME, ID, lingua, codifica, contenuto decodificato, payload HEX e record annidati ove disponibili.
-- Scheda dettagli apribile toccando l'ultimo esito, il contatore Tag salvati o una riga dello storico.
-- Condivisione di singolo tag via Web Share con fallback appunti/TXT.
-- Condivisione dello Storico via file CSV, con fallback testo o download CSV.
-- Conversione dello storico precedente con indicazione esplicita dei metadati non disponibili.
-- Correzione riferimenti al dettaglio dopo eliminazione e mantenimento del layout senza scroll.
-- Cache PWA/asset versionati e aggiornamenti sicuri.
+- **Portabile vero**: produzione di un solo `NFC-Reader-Portable-1.8.0-x64.exe` tramite electron-builder portable; niente installer, nessuna cartella accessoria da distribuire.
+- **PC/SC corretto**: eliminato `pcsc-mini` / `@pcsc-mini/*`; usato bridge WinSCard di Windows compilato con strumenti .NET Framework inclusi nel sistema. Nessun Python o modulo Node nativo.
+- Rilevamento lettori e presenza tag con identificatore per ogni inserimento; transazioni solo su lettori/tag ancora validi.
+- **Icone trasparenti** PNG 192/512 e ICO Windows rigenerate senza sfondo chiaro esterno.
+- GitHub Actions per compilazione bridge, test e distribuzione del portable nella sezione Artifacts.
 
-## 1.2.0 - 14 ottobre 2026
-- Due tab Lettore e Storico, con lista a scorrimento indipendente.
-- Suoni distinti di conferma, errore e doppione, con anti-rimbalzo.
-- Protezione dello storico contro perdita dati e modifiche concorrenti.
 
-## 1.1.0 - 14 ottobre 2026
-- PWA mobile-first, Vue 3 locale, impostazioni, lettura continua e temi.
+## v1.7.0 · 15 ottobre 2026
 
-## 1.0.0 - 14 ottobre 2026
-- Primo lettore NFC con CSV/TXT e progressivo opzionale.
+- **Un repository unico**: sito PWA Vue, layout desktop Electron, test, icone, documentazione e workflow GitHub Actions.
+- **Build Windows senza Python locale**: sostituita la vecchia dipendenza `nfc-pcsc`/`pcsclite` basata su node-gyp con il modulo `pcsc-mini` dotato di binari N-API precompilati per Windows x64/Electron.
+- Aggiunto adapter PC/SC per lettura UID (`FF CA`) e, su ACS ACR122U e tag Type 2 riconosciuti, lettura e scrittura NDEF (`FF B0` / `FF D6`).
+- Controlli APDU, restrizioni di scrittura alle sole pagine NDEF, verifica post-scrittura e nessuna scrittura verso lettori non riconosciuti.
+- Workflow **Compila installer Windows**: test, packaging NSIS, pubblicazione `.exe` negli artefatti Actions. L'utente può allegarlo manualmente alla Release.
+- Workflow **Pubblica NFC Reader web**: deploy esclusivamente dei file PWA, senza componenti desktop sul sito.
+- Nuova icona `.ico` per l'installer Windows e versionamento coerente della cache PWA.
+- **Interfaccia Vue invariata rispetto alla v1.6.0:** stessa pagina nel browser e nel wrapper Electron, con layout responsive desktop a due colonne.
+- Test aggiornati per il nuovo driver PC/SC simulato.
+
+### Limitazione di verifica
+
+Installer, caricamento effettivo del driver su Windows e lettura/scrittura con hardware reale non testabili in questa sessione. La pipeline deve essere eseguita sul proprio repository prima della distribuzione.
+
+## v1.6.0 · 15 ottobre 2026
+
+- Vista desktop a due colonne, con Storico a destra.
+- Nuova sezione Scrivi (testo o URL) per Chrome Android ed Electron USB.
+- Bridge desktop PC/SC, con codec NDEF Type 2, protezioni e controllo capacità.
+
+## v1.4.0
+
+- Pulsante Condividi sopra lo Storico, modale esportazione CSV/TXT e accordion dei record chiuso di default.
+
+## v1.3.0
+
+- Lettura singola/continua, dettagli NDEF, condivisione.
+
+## v1.2.0
+
+- Tab Lettore e Storico, segnali acustici di successo/doppione/errore, layout mobile senza scroll nella pagina Lettore.

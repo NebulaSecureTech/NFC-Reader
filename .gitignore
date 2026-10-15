@@ -1,0 +1,10 @@
+node_modules/
+electron/node_modules/
+electron/dist/
+_site/
+.DS_Store
+*.log
+!assets/vendor/LICENSE-vue.txt
+qa/
+
+electron/bin/

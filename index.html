@@ -10,10 +10,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="NFC Reader">
   <title>NFC Reader</title>
-  <link rel="icon" href="./assets/icons/favicon.svg?v=1.4.0" type="image/svg+xml">
+  <link rel="icon" href="./assets/icons/favicon.svg?v=1.8.0" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="manifest" href="./manifest.webmanifest?v=1.4.0">
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.4.0">
+  <link rel="manifest" href="./manifest.webmanifest?v=1.8.0">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.8.0">
   <script>
     try {
       const settings = JSON.parse(localStorage.getItem('nfc-reader.settings.v1') || '{}');
@@ -52,14 +52,17 @@
     <symbol id="ico-history" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7m2-4v5l3 2"/></symbol>
     <symbol id="ico-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5m-5 0a8 8 0 0 1 14-5l2 2M4 15l2 2a8 8 0 0 0 14-5"/></symbol>
     <symbol id="ico-share" viewBox="0 0 24 24"><path d="M12 16V3m-4 4 4-4 4 4M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></symbol>
+    <symbol id="ico-pencil" viewBox="0 0 24 24"><path d="m15 5 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z"/></symbol>
+    <symbol id="ico-usb" viewBox="0 0 24 24"><path d="M12 2v15m0-15 3 3m-3-3L9 5m3 12v5m-5-8h10m-10 0v-3h3v3m7 0v-3h-3v3"/><circle cx="12" cy="20" r="2"/></symbol>
+    <symbol id="ico-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7M14 11a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></symbol>
     <symbol id="ico-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></symbol>
   </svg>
 
   <div id="app" v-cloak>
     <div class="app-shell">
       <header class="app-header">
-        <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#ico-nfc"/></svg></span><div><strong>NFC Reader</strong><span>Il tuo lettore, sempre pronto.</span></div></div>
-        <button type="button" class="icon-btn settings-trigger" aria-label="Apri impostazioni" title="Impostazioni" @click="openSettings"><svg class="icon"><use href="#ico-gear"/></svg><span v-if="updateAvailable" class="update-dot"></span></button>
+        <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#ico-nfc"/></svg></span><div><strong>NFC Reader</strong><span>Leggi, scrivi e organizza i tag.</span></div></div>
+        <div class="header-actions"><span class="desktop-header-local"><svg class="icon tiny"><use href="#ico-shield"/></svg> Archivio privato</span><button type="button" class="icon-btn settings-trigger" aria-label="Apri impostazioni" title="Impostazioni" @click="openSettings"><svg class="icon"><use href="#ico-gear"/></svg><span v-if="updateAvailable" class="update-dot"></span></button></div>
       </header>
 
       <div v-if="blocked" class="global-alert" role="alert">
@@ -69,7 +72,8 @@
       <div v-else-if="updateAvailable" class="update-banner"><span>Nuova versione disponibile</span><button type="button" class="text-btn" @click="applyUpdate">Aggiorna</button></div>
 
       <main class="app-main">
-        <section id="panel-reader" v-show="tab === 'reader'" role="tabpanel" aria-labelledby="tab-reader" class="reader-panel" :class="[running ? 'is-running' : '', flash ? 'flash-' + flash : '']">
+        <div class="desktop-intro"><div><span class="eyebrow">PANNELLO NFC</span><h1>Lettura, scrittura e storico</h1><p>Gestisci i tag sul telefono o con un lettore USB collegato al PC.</p></div><div class="desktop-tool-choice" role="group" aria-label="Attività NFC"><button type="button" :class="{selected: tab !== 'writer'}" @click="setTab('reader')"><svg class="icon tiny"><use href="#ico-scan"/></svg>Leggi</button><button type="button" :class="{selected: tab === 'writer'}" @click="setTab('writer')"><svg class="icon tiny"><use href="#ico-pencil"/></svg>Scrivi</button></div><div class="desktop-intro-summary"><span class="summary-icon"><svg class="icon"><use href="#ico-database"/></svg></span><span><strong>{{ entries.length }}</strong><small>{{ entries.length === 1 ? 'tag salvato' : 'tag salvati' }} in questo browser</small></span></div></div>
+        <section id="panel-reader" v-show="tab === 'reader' || (desktopLayout && tab !== 'writer')" :role="desktopLayout ? 'region' : 'tabpanel'" :aria-label="desktopLayout ? 'Lettore NFC' : null" :aria-labelledby="desktopLayout ? null : 'tab-reader'" tabindex="-1" class="reader-panel" :class="[running ? 'is-running' : '', flash ? 'flash-' + flash : '']">
           <div class="panel-heading"><span class="eyebrow">{{ singleMode ? 'LETTURA SINGOLA' : 'SCANSIONE CONTINUA' }}</span><span class="status-chip" :class="{active: running, starting: scanState === 'starting'}"><span class="status-dot"></span>{{ statusLabel }}</span></div>
 
           <div class="scan-stage">
@@ -95,11 +99,34 @@
               </div><svg v-if="canOpenLatest" class="icon small last-chevron"><use href="#ico-chevron"/></svg>
             </div>
             <button type="button" class="scan-btn" :class="{'stop-btn': running}" :disabled="!running && !canStart" @click="toggleScan"><svg class="icon"><use :href="running ? '#ico-stop' : '#ico-scan'"/></svg>{{ running ? (scanState === 'starting' ? 'Annulla attivazione' : 'Ferma scansione') : 'Avvia scansione' }}</button>
-            <p class="scan-hint">{{ readerHint }}</p>
+            <p class="scan-hint">{{ readerHint }}</p><p v-if="isDesktop" class="reader-hardware"><svg class="icon tiny"><use href="#ico-usb"/></svg>{{ connectedReaderLabel }}</p>
           </div>
         </section>
 
-        <section id="panel-history" v-show="tab === 'history'" role="tabpanel" aria-labelledby="tab-history" class="history-panel">
+        <section id="panel-writer" v-show="tab === 'writer'" :role="desktopLayout ? 'region' : 'tabpanel'" :aria-label="desktopLayout ? 'Scrittura tag NFC' : null" :aria-labelledby="desktopLayout ? null : 'tab-writer'" tabindex="-1" class="writer-panel">
+          <div class="writer-top"><span class="eyebrow">SCRITTURA NDEF</span><span class="writer-state-chip" :class="{'busy': writeState === 'waiting', 'written': writeState === 'success'}"><span class="status-dot"></span>{{ writeState === 'waiting' ? 'In attesa tag' : writeState === 'success' ? 'Completata' : 'Pronto' }}</span></div>
+          <div class="writer-heading"><span class="writer-icon"><svg class="icon"><use href="#ico-pencil"/></svg></span><div><h1>Scrivi un tag</h1><p>Testo o collegamento URL in formato NDEF.</p></div></div>
+          <div class="writer-form">
+            <label class="writer-label">TIPO DI CONTENUTO</label>
+            <div class="segmented writer-types" role="group" aria-label="Tipo di contenuto da scrivere"><button type="button" :disabled="writeState === 'waiting'" :aria-pressed="writeKind === 'text'" :class="{selected: writeKind === 'text'}" @click="chooseWriteKind('text')"><svg class="icon tiny"><use href="#ico-pencil"/></svg>Testo</button><button type="button" :disabled="writeState === 'waiting'" :aria-pressed="writeKind === 'url'" :class="{selected: writeKind === 'url'}" @click="chooseWriteKind('url')"><svg class="icon tiny"><use href="#ico-link"/></svg>URL</button></div>
+            <label class="writer-label" for="write-value">{{ writeKind === 'url' ? 'INDIRIZZO WEB' : 'TESTO DA SCRIVERE' }}</label>
+            <textarea v-if="writeKind === 'text'" id="write-value" class="writer-input writer-textarea" v-model="writeValue" :disabled="writeState === 'waiting'" @input="resetWriteApproval" maxlength="500" rows="4" placeholder="Inserisci il testo da memorizzare sul tag..."></textarea>
+            <input v-else id="write-value" type="url" class="writer-input" v-model="writeValue" :disabled="writeState === 'waiting'" @input="resetWriteApproval" maxlength="500" placeholder="https://esempio.it" inputmode="url" autocapitalize="none" autocomplete="off" spellcheck="false">
+            <div class="writer-byte-info"><span>UTF-8 · {{ writeBytes }} byte di contenuto</span><span>{{ writeValue.length }} / 500</span></div>
+            <div class="writer-warning"><svg class="icon small"><use href="#ico-info"/></svg><p><strong>Attenzione: la scrittura sovrascrive i dati NDEF esistenti.</strong> Usa solo tag tuoi e compatibili, non badge aziendali o carte di accesso. La capienza varia per tag.</p></div>
+            <label class="writer-consent"><input type="checkbox" v-model="writeConfirmed" :disabled="writeState === 'waiting'"><span>Confermo di voler sostituire il contenuto del tag.</span></label>
+            <div v-if="isDesktop" class="writer-device"><svg class="icon small"><use href="#ico-usb"/></svg>{{ connectedReaderLabel }}</div>
+            <div v-else-if="!webWriteSupported" class="writer-unavailable"><svg class="icon small"><use href="#ico-info"/></svg>Scrittura Web NFC disponibile su Chrome Android compatibile. Sul PC usa la versione Electron con lettore USB.</div>
+          </div>
+          <div class="writer-bottom">
+            <p v-if="writeMessage" class="writer-message" :class="{'writer-error': writeState === 'error', 'writer-success': writeState === 'success'}" role="status" aria-live="polite">{{ writeMessage }}</p>
+            <button v-if="writeState === 'waiting'" class="scan-btn stop-btn" type="button" @click="cancelWrite"><svg class="icon"><use href="#ico-stop"/></svg>Annulla scrittura</button>
+            <button v-else class="scan-btn" type="button" :disabled="!canWrite" @click="startWrite"><svg class="icon"><use href="#ico-pencil"/></svg>Scrivi sul tag</button>
+            <p class="scan-hint">{{ isDesktop ? 'Dopo aver premuto Scrivi, avvicina un tag al lettore USB (entro 45 secondi).' : 'Dopo aver premuto Scrivi, avvicina il tag al retro del telefono.' }}</p>
+          </div>
+        </section>
+
+        <section id="panel-history" v-show="desktopLayout || tab === 'history'" :role="desktopLayout ? 'region' : 'tabpanel'" :aria-label="desktopLayout ? 'Storico dei tag NFC' : null" :aria-labelledby="desktopLayout ? null : 'tab-history'" tabindex="-1" class="history-panel">
           <div class="history-heading">
             <div class="history-heading-title"><span class="eyebrow">IL TUO ARCHIVIO</span><h1>Storico <span class="count-badge">{{ entries.length }}</span></h1></div>
             <div class="history-heading-actions">
@@ -110,6 +137,7 @@
           <div v-if="running" class="history-scan-status"><span><span class="status-dot"></span>Scansione {{ scanState === 'starting' ? 'in attivazione' : 'attiva' }}</span><button type="button" class="text-btn" @click="stopScan">Ferma</button></div>
           <div class="searchbox"><svg class="icon small"><use href="#ico-search"/></svg><input type="search" v-model="search" @input="visibleLimit = 50" placeholder="Cerca UID o contenuto" aria-label="Cerca nello storico" autocomplete="off" spellcheck="false"><button v-if="search" type="button" class="icon-btn search-clear" aria-label="Cancella ricerca" @click="search = ''"><svg class="icon small"><use href="#ico-close"/></svg></button></div>
 
+          <div class="history-table-head" aria-hidden="true"><span>N.</span><span>UID</span><span>CONTENUTO</span><span>DATA / ORA</span><span>AZIONI</span></div>
           <div class="history-scroll" ref="historyList" tabindex="0" aria-label="Elenco dei tag salvati">
             <div v-if="!entries.length" class="empty-state"><div class="empty-icon"><svg class="icon"><use href="#ico-history"/></svg></div><h2>Nessun tag, per ora.</h2><p>Le prossime letture saranno qui,<br>in ordine dalla pi&ugrave; recente.</p><button type="button" class="text-btn" @click="setTab('reader', true)">Vai al lettore <svg class="icon small"><use href="#ico-chevron"/></svg></button></div>
             <div v-else-if="!filteredEntries.length" class="empty-state"><div class="empty-icon"><svg class="icon"><use href="#ico-search"/></svg></div><h2>Nessun risultato</h2><p>Prova un altro UID o contenuto.</p><button type="button" class="text-btn" @click="search = ''">Mostra tutti i tag</button></div>
@@ -127,8 +155,9 @@
         </section>
       </main>
 
-      <nav class="bottom-nav" role="tablist" aria-label="Sezioni dell'app" @keydown="tabKeydown">
+      <nav v-show="!desktopLayout" class="bottom-nav" role="tablist" aria-label="Sezioni dell'app" @keydown="tabKeydown">
         <button id="tab-reader" type="button" role="tab" aria-controls="panel-reader" :aria-selected="tab === 'reader'" :tabindex="tab === 'reader' ? 0 : -1" :class="{selected: tab === 'reader'}" @click="setTab('reader')"><span class="nav-icon"><svg class="icon"><use href="#ico-scan"/></svg><span v-if="running" class="nav-live-dot"></span></span><span>Lettore</span></button>
+        <button id="tab-writer" type="button" role="tab" aria-controls="panel-writer" :aria-selected="tab === 'writer'" :tabindex="tab === 'writer' ? 0 : -1" :class="{selected: tab === 'writer'}" @click="setTab('writer')"><span class="nav-icon"><svg class="icon"><use href="#ico-pencil"/></svg></span><span>Scrivi</span></button>
         <button id="tab-history" type="button" role="tab" aria-controls="panel-history" :aria-selected="tab === 'history'" :tabindex="tab === 'history' ? 0 : -1" :class="{selected: tab === 'history'}" @click="setTab('history')"><span class="nav-icon"><svg class="icon"><use href="#ico-history"/></svg><span v-if="entries.length" class="nav-count">{{ entries.length > 99 ? '99+' : entries.length }}</span></span><span>Storico</span></button>
       </nav>
     </div>
@@ -153,7 +182,7 @@
               <h3 class="section-label">ASPETTO</h3><div class="segmented theme-options" role="group" aria-label="Tema dell'app"><button type="button" :class="{selected: theme === 'auto'}" :aria-pressed="theme === 'auto'" @click="setTheme('auto')">Sistema</button><button type="button" :class="{selected: theme === 'light'}" :aria-pressed="theme === 'light'" @click="setTheme('light')">Chiaro</button><button type="button" :class="{selected: theme === 'dark'}" :aria-pressed="theme === 'dark'" @click="setTheme('dark')">Scuro</button></div>
               <div class="app-info-card"><svg class="icon"><use href="#ico-install"/></svg><div><strong>{{ installed ? 'App installata' : 'Aggiungi alla schermata Home' }}</strong><p v-if="!installed">{{ installPrompt ? 'Aprila come un’app, senza la barra del browser.' : 'Dal menu di Chrome scegli Installa app o Aggiungi a schermata Home.' }}</p><p v-else>Pronta dalla schermata Home.</p><button v-if="installPrompt && !installed" type="button" class="btn btn-small btn-secondary" @click="installApp">Installa app</button></div></div>
               <div class="app-info-card"><svg class="icon"><use href="#ico-shield"/></svg><div><strong>I tag restano qui</strong><p>Nessun account o invio a servizi esterni. Esporta lo storico prima di cancellare i dati del browser.</p><small>{{ offlineReady ? 'Interfaccia disponibile anche offline.' : offlineFailed ? 'Cache offline non disponibile: riprova online.' : 'Preparazione della cache offline...' }}</small></div></div>
-              <div class="compatibility-note"><strong>Chrome su Android &middot; NFC &middot; HTTPS</strong><p>Tag compatibili NDEF, app visibile e schermo sbloccato. UID non sempre disponibile. Senza UID i doppioni sono confrontati per contenuto NDEF.</p><p>I contatori Doppioni ed Errori si riferiscono all'apertura corrente dell'app.</p></div>
+              <div class="compatibility-note"><strong>{{ isDesktop ? 'Electron · lettore USB PC/SC' : 'Chrome su Android · NFC · HTTPS' }}</strong><p>{{ isDesktop ? 'Su PC la lettura UID richiede un lettore PC/SC. La lettura e scrittura NDEF Type 2 dipendono da modello, tag e driver. Non sono supportati genericamente badge protetti o carte Classic/DESFire.' : 'Tag compatibili NDEF, app visibile e schermo sbloccato. UID non sempre disponibile. Senza UID i doppioni sono confrontati per contenuto NDEF.' }}</p><p>I contatori Doppioni ed Errori si riferiscono all'apertura corrente dell'app.</p></div>
               <button v-if="updateAvailable" type="button" class="btn btn-secondary full-width" @click="applyUpdate"><svg class="icon small"><use href="#ico-refresh"/></svg>Aggiorna app</button>
             </div>
           </div>
@@ -217,7 +246,7 @@
                 </article>
                 </template>
                 <div v-else class="record-empty legacy-records"><svg class="icon small"><use href="#ico-info"/></svg><span>Questo tag è stato salvato con una versione precedente. I dati tecnici completi saranno disponibili dopo una nuova lettura.</span></div>
-                <small class="detail-disclaimer">Sono mostrati soltanto i dati NDEF accessibili dal browser. Tecnologia del chip, memoria totale e aree protette non sono disponibili tramite Web NFC.</small>
+                <small class="detail-disclaimer">{{ isDesktop ? 'Dati letti dal dispositivo USB quando supportati. Le informazioni non accessibili dal lettore non vengono inventate.' : 'Sono mostrati soltanto i dati NDEF accessibili dal browser. Tecnologia del chip, memoria totale e aree protette non sono disponibili tramite Web NFC.' }}</small>
               </div>
             </details>
           </div>
@@ -239,7 +268,7 @@
     <div v-if="toast && !modal" class="snackbar" :class="'toast-' + toast.tone" role="status" aria-live="polite"><svg class="icon small"><use :href="iconFor(toast.tone)"/></svg><span>{{ toast.text }}</span></div>
   </div>
   <noscript><p>Abilita JavaScript per usare NFC Reader.</p></noscript>
-  <script src="./assets/vendor/vue.global.js?v=1.4.0"></script>
-  <script type="module" src="./assets/js/app.mjs?v=1.4.0"></script>
+  <script src="./assets/vendor/vue.global.js?v=1.8.0"></script>
+  <script type="module" src="./assets/js/app.mjs?v=1.8.0"></script>
 </body>
 </html>

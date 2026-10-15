@@ -1,122 +1,93 @@
-# NFC Reader v1.4.0
+# NFC Reader 1.8.0 · PWA e Windows Portable
 
-Web app **Vue 3, mobile-first, Material Design**, installabile come PWA e pubblicabile su GitHub Pages. Non richiede backend, account, build o servizi esterni. Tutti gli asset, comprese icone e Vue, sono in locale.
+**Un solo repository GitHub, un solo frontend Vue 3, due modi di usarlo.**
 
-## Novita della 1.4.0
+- **GitHub Pages:** app statica/PWA per smartphone Android con Web NFC. Nessun server o build.
+- **Windows:** app Electron con **layout desktop** e lettori NFC USB PC/SC, in **un unico `.exe` portable** (nessun installer, nessuna cartella da distribuire).
+- **Nessun addon Node nativo:** eliminati `pcsc-mini`, `@pcsc-mini/*` e `nfc-pcsc`. Lettura PC/SC tramite API WinSCard di Windows e piccolo helper C# compilato durante la build. Non servono Python, node-gyp o Visual Studio Build Tools.
+- **Icona trasparente:** icone 192/512 PNG e Windows ICO senza sfondo chiaro esterno. L'icona PWA *maskable* conserva il proprio colore pieno per i launcher Android.
 
-- **Condividi in alto nello Storico:** unico pulsante nell'intestazione, accanto al titolo. La vecchia barra inferiore e' stata rimossa per lasciare piu' spazio alla lista. Il pulsante **Svuota** resta separato e richiede conferma.
-- **Una modale per esportare e condividere:** scegli **CSV** o **TXT**, attiva/disattiva **Numero progressivo**, poi premi **Scarica** oppure **Condividi**. La scelta si applica all'intero storico, anche durante una ricerca.
-- **Record NDEF in accordion:** nella scheda dettaglio vengono mostrati subito UID, data/ora, contenuto leggibile e riepilogo. I **Record e dati tecnici** sono raggruppati in un accordion nativo, **chiuso per impostazione predefinita** ogni volta che apri un tag, con i record HEX disponibili all'interno.
-- Restano operative **lettura singola e continua**, suoni di conferma/doppione/errore, dettagli da Lettore e Storico, condivisione di un singolo tag, memoria locale e PWA offline.
+## Pubblica sul repository GitHub
 
-## Pubblicazione su GitHub Pages
+1. Estrai lo ZIP e caricane il **contenuto** direttamente nel repository, compresi `.github/`, `.nojekyll` e `electron/`.
+2. **Settings → Pages → Source: GitHub Actions**. La workflow `Pubblica NFC Reader web` pubblica la PWA.
+3. **Actions → Compila EXE portable Windows → Run workflow**.
+4. Apri la run completata → **Artifacts** → scarica `NFC-Reader-Portable-Windows-x64`.
+5. Estrai dall'artefatto il **solo file** `NFC-Reader-Portable-1.8.0-x64.exe` e allegalo in **Releases → Draft a new release**, tag `v1.8.0`.
 
-1. Estrai lo ZIP `NFC-Reader-PWA-GitHub-Pages-v1.4.0.zip`.
-2. Carica **il contenuto** dello ZIP nella radice del repository GitHub: `index.html`, `assets/`, `.nojekyll`, `manifest.webmanifest`, `sw.js` e i documenti.
-3. In **Settings > Pages > Build and deployment** scegli **Deploy from a branch**, `main`, `/(root)` e salva.
-4. Apri l'indirizzo HTTPS del sito con **Chrome su Android**, NFC attivo.
-5. Facoltativo: dal menu del browser scegli **Installa app** / **Aggiungi alla schermata Home**.
+**Non servono Python né Node.js sul PC che esegue l'EXE portable.** La build avviene con Node.js e il compilatore C# Windows del runner GitHub. L'EXE portable contiene Electron, la pagina Vue e il piccolo helper: all'avvio li estrae automaticamente in una directory temporanea. Non occorre installare DLL o file accanto all'EXE. Il driver PC/SC del lettore e il servizio Smart Card di Windows devono comunque essere disponibili.
 
-Percorsi relativi: non serve modificare il nome del repository. Non serve `npm install` o `npm run build`.
+## Compila localmente su Windows (opzionale)
 
-### Aggiornamento dalla v1.2.0 o v1.3.0
+Richiede Windows 10/11 x64, Node.js 22 + npm, accesso a Internet per scaricare Electron. **Non richiede Python né tool C++.**
 
-1. **Esporta lo storico** prima dell'aggiornamento.
-2. Sostituisci **tutti** i file del sito con quelli della v1.4.0. Conserva l'eventuale `CNAME` del repository.
-3. Apri il sito online; se compare l'avviso di aggiornamento, ferma NFC e premi **Aggiorna**. Verifica nelle impostazioni il numero **v1.4.0**.
-4. Non eliminare i dati del sito per aggiornare: eliminerebbe lo storico. Mantieni la stessa origine HTTPS e lo stesso profilo/browser: passando a un altro dominio lo storico locale non segue automaticamente.
+Doppio clic su `electron/build-win.bat`. Oppure, in PowerShell:
 
-## Uso e schermate
+```powershell
+cd electron
+npm run bridge:build
+npm install --no-audit --no-fund
+npm test
+npm run dist:win
+```
 
-**Lettore** (pagina senza scroll) mostra stato NFC, ultimo esito, contatori e Avvia/Ferma. Tocca l'ultimo tag o il contatore **Tag salvati** per aprirne il dettaglio. Il contatore apre sempre l'ultimo tag **salvato**; la scheda ultimo esito puo aprire anche un doppione **non salvato** appena letto.
+Il risultato si trova in `electron/dist/NFC-Reader-Portable-1.8.0-x64.exe`.
 
-**Storico** mostra ricerca e righe dei tag (toccabili). Il pulsante **Condividi**, in alto accanto al titolo, apre la modale **Esporta e condividi**. Li' scegli il formato CSV/TXT, il progressivo e se **Scaricare** o **Condividere**. Lo storico scorre in modo indipendente; non esiste piu' alcuna barra di esportazione in basso. La scansione continua non si ferma cambiando tab.
+Se `npm run bridge:build` non funziona perché il comando non è disponibile prima di `npm install`, usa quest'ordine:
 
-**Impostazioni > Lettura**: switch **Lettura singola**, suoni lettura/doppione/errore, volume, prove audio, vibrazione, filtro doppioni e richiesta di schermo acceso. Per cambiare modalita' ferma prima una scansione attiva.
+```powershell
+cd electron
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File bridge/build.ps1
+npm install --no-audit --no-fund
+npm run dist:win
+```
 
-**Impostazioni > App**: tema automatico/chiaro/scuro, installazione, cache e requisiti.
+## PC/SC Windows: come funziona
 
-### Singola o continua
+L'app desktop apre la **stessa pagina HTML/CSS/Vue di GitHub Pages**, tramite protocollo locale sicuro `nfc-app://`. I comandi hardware passano da un IPC ristretto a `WinScardBridge` nel processo principale Electron. Il bridge avvia `NfcPcscBridge.exe` che usa esclusivamente `WinSCard.dll` già presente in Windows.
 
-- **Continua (default)**: un tocco su Avvia; i tag si raccolgono in sequenza fino a Ferma o alla chiusura/sospensione della pagina. I doppioni sono riconosciuti e ignorati per default, ma sono segnalati con un suono distinto.
-- **Singola**: un tocco su Avvia; il primo tag NFC valido ferma la lettura, salva se necessario e apre i dati NDEF. Chiusa la scheda, premi nuovamente Avvia per leggere un altro tag. Su doppione ignorato mostra i dati **della lettura corrente**, senza creare una seconda riga.
-- Un evento NFC non valido produce un errore, ma in modalita' singola rimane possibile avvicinare un tag leggibile. Eventi tardivi dopo Stop sono ignorati.
-- Anti-rimbalzo di 1 secondo quando lo stesso tag resta davanti al telefono. Senza UID, i doppioni vengono individuati dal payload NDEF (due tag identici possono risultare un unico tag).
+Il mini programma PC/SC interno non usa componenti aggiuntivi. Rileva i lettori collegati, riconosce inserimento/rimozione di tag, trasmette gli APDU `FF CA` (UID), `FF B0` (lettura Type 2) e `FF D6` (scrittura Type 2) tramite PC/SC. L'app mantiene i controlli NDEF e la verifica dopo scrittura. Le richieste sono associate al lettore e alla singola presentazione del tag, per evitare operazioni su un tag rimosso/sostituito.
 
-### Dettagli tecnici: limiti reali
+**Compatibilità hardware:** la lettura UID funziona sui lettori che espongono il comando PC/SC `FF CA`; i record NDEF Type 2 richiedono il supporto di lettura delle pagine `FF B0`. La scrittura è **abilitata soltanto su ACS ACR122U compatibile** e su tag Type 2 con capability container valida, non protetti, formattati in modo riconoscibile e con capienza sufficiente. La modalità scrittura richiede un nuovo avvicinamento del tag dopo l'attivazione. Le tessere HID tastiera/USB (non PC/SC) non sono gestite.
 
-Nel dettaglio tag, tocca **Record e dati tecnici** per aprire l'accordion (inizialmente chiuso) con i singoli record, MIME, ID e payload HEX quando disponibili.
+Prima di provare il lettore: collega il lettore USB, verifica che Windows lo riconosca tra i dispositivi Smart Card e che il servizio `SCardSvr` sia in esecuzione quando necessario (in Windows spesso parte su richiesta). In caso di errore, la pagina mostra la causa, senza interrompere la versione web.
 
-La Web NFC API espone **UID quando disponibile** e record **NDEF** con i relativi metadati, non il protocollo fisico del tag, la capacita' di memoria totale, la tecnologia specifica, eventuali blocchi protetti o i contenuti fuori da NDEF. Non vengono inventati valori non esposti dalla piattaforma.
+**Limitazioni:** Electron/PCSC deve poter avviare l'helper interno. Restrizioni antivirus, Application Control o policy aziendali potrebbero impedirlo. L'EXE non è firmato digitalmente e SmartScreen può mostrare un avviso. Il contenuto viene salvato nel profilo locale Electron anche usando la versione portable: portable indica assenza di installazione, **non** una modalità dati su chiavetta automatica. Sul browser lo storico resta separato; esporta CSV/TXT per conservarlo.
 
-L'app conserva i record NDEF (testo decodificato e payload HEX) in locale per poterli consultare in futuro. Limiti applicativi: 64 record e 64 KB complessivi per lettura, 5.000 letture nello Storico; la quota reale del browser puo' esaurirsi prima. Nell'anteprima della lista, il testo e' ridotto a 600 caratteri; il dettaglio conserva il payload HEX entro i limiti suddetti e il testo decodificato fino a 16.384 caratteri per record. I record binari non vengono interpretati arbitrariamente; i dati non sono eseguiti ne' gli URL aperti automaticamente.
+## La UI e i dati
 
-I record inseriti prima della v1.3 non includono il payload HEX. Se ti servono quei dati, rileggi il tag. Se un tag esistente viene ignorato come doppione, usa momentaneamente la modalita' singola per visualizzarne i dati NDEF aggiornati o esporta prima lo storico e poi elimina quel tag dal registro.
+Sono disponibili: lettura singola/continua, lettura e scrittura NDEF Testo/URL, notifica sonora per tag/doppione/errore, vibrazione se supportata, storico, dettagli con record in accordion, ricerca, condivisione e CSV/TXT con progressivo opzionale. Layout a due colonne su desktop e tre tab sul telefono. Le scansioni NFC vere sul browser richiedono Android Chrome e HTTPS, e supportano solo Web NFC/NDEF.
 
-## Esportazione e condivisione
-
-- CSV: UTF-8 con BOM, separatore `;`, colonne Numero (opzionale), UID, anteprima NDEF e data/ora. Celle sensibili protette dall'interpretazione come formula nei fogli di calcolo.
-- TXT: un UID per riga (o descrizione NDEF se UID assente), con/senza progressivo.
-- **Storico > Condividi**: si apre un'unica modale. Seleziona CSV o TXT e l'eventuale progressivo; premi **Scarica** per ottenere il file o **Condividi** per il pannello nativo del telefono (file se supportato, testo per esportazioni brevi, altrimenti download dello stesso formato). Condividere e' una **azione esplicita dell'utente**.
-- **Condividi singolo tag**: testo con i dati NDEF principali. I payload HEX molto lunghi sono abbreviati nel testo condiviso; nell'app il dettaglio puo' mostrarli per intero. Senza Web Share: appunti o TXT scaricato.
-
-Le esportazioni riguardano l'intero registro, anche se la ricerca filtra la lista visibile. La numerazione e' ricalcolata nel file. Condividi/Esporta non inviano dati da soli: bisogna premere il pulsante.
-
-## Dati locali e resilienza
-
-Le letture e le preferenze sono in `localStorage` con le **stesse chiavi delle versioni precedenti**. Non esiste backend. Se la scrittura fallisce, la scansione si ferma, il tag resta temporaneamente in memoria e compare un avviso persistente per esportare/riprovare. Non chiudere o ricaricare mentre vedi quell'avviso: potresti perdere le letture non scritte su disco.
-
-L'archivio danneggiato non viene sovrascritto automaticamente. Modifiche arrivate da altre schede interrompono la scansione. Usa una sola sessione operativa e salva periodicamente un CSV/TXT. Le copie condivise possono contenere UID e altri dati del tag: scegli con attenzione i destinatari.
-
-## Limiti del dispositivo
-
-- NFC sul web: principalmente **Chrome su Android** con NFC attivo, pagina **HTTPS** e tag **NDEF**.
-- La scansione richiede app visibile e schermo sbloccato. Con schermo spento/in background la piattaforma puo' sospendere l'accesso NFC. L'opzione Schermo acceso usa Wake Lock solo se disponibile.
-- NFC a basso livello, badge aziendali protetti, tessere MIFARE Classic non NDEF e lettori USB desktop non sono letti tramite questa API.
-- La PWA puo' caricare l'interfaccia offline dopo il primo accesso corretto, ma non estende le capacita' hardware del browser.
-
-## Cartelle
+## Struttura
 
 ```text
-index.html                 Interfaccia Vue
-manifest.webmanifest       PWA installabile
-sw.js                      Cache/versionamento
-.nojekyll                  GitHub Pages
-assets/
-  css/style.css            Material Design / responsive
-  js/app.mjs               UI, NFC, storico, condivisione, preferenze
-  js/core.mjs              Record NDEF, UID e formati CSV/TXT
-  js/sound.mjs             Conferma, doppione, errore
-  vendor/                  Vue locale con licenza MIT
-  icons/                   Icone PWA
-README.md
-CHANGELOG.md
-TEST-REPORT.md
+NFC-Reader/
+├── index.html                        # Stessa UI Vue su sito ed Electron
+├── assets/                          # CSS, JS, Vue locale, icone (PNG/ICO)
+├── sw.js, manifest.webmanifest      # PWA e cache offline
+├── electron/
+│   ├── main.cjs, preload.cjs        # Electron + IPC sicuro
+│   ├── pcsc-manager.cjs             # Scansioni/stato/scrittura
+│   ├── pcsc-apdu.cjs, ndef.cjs      # APDU e codec Type 2
+│   ├── winscard-bridge.cjs          # Trasporto Node -> Windows
+│   ├── bridge/
+│   │   ├── NfcPcscBridge.cs         # WinSCard nativo Windows, no npm addon
+│   │   └── build.ps1                # Compila l'helper su Windows
+│   ├── package.json, build-win.bat
+│   └── tests/
+├── tests/                           # Test logica Web/PWA
+├── .github/workflows/
+│   ├── pages.yml                    # Pubblica il sito
+│   └── build-windows.yml           # Produce unico EXE portable
+├── docs/RELEASE-v1.8.0.md
+├── CHANGELOG.md
+└── README.md
 ```
 
-Il pacchetto **Sorgenti** contiene anche `tests/`. Non e' previsto alcun processo di build.
+La cartella `electron/bin/` è **generata durante la build** e viene incorporata nel portable, non deve essere caricata nel repository.
 
-## Test
+## Prove e limiti del rilascio
 
-Per gli unit test serve Node.js:
+I test JavaScript sono automatici e non richiedono un lettore fisico. La workflow Windows compila il codice C# e prepara l'EXE. **La compilazione Windows reale e il test USB fisico non sono stati eseguiti in questo ambiente**: vanno verificati sulla tua GitHub Actions e con il tuo modello di lettore prima di considerare questa versione collaudata per la produzione. I test non dimostrano che un particolare lettore supporti la scrittura.
 
-```sh
-node --test tests/*.test.mjs
-```
-
-Per i test UI simulati (browser Chromium e Playwright):
-
-```sh
-python -m pip install playwright
-python -m playwright install chromium
-python tests/browser_smoke.py
-```
-
-I test verificano l'interfaccia e simulano Web NFC, suoni, file e Web Share. **Non sostituiscono il collaudo su un telefono Android con tag fisici e condivisione reale**. Il report e' in `TEST-REPORT.md`.
-
-## Riferimenti API
-
-- Web NFC: https://developer.chrome.com/docs/capabilities/nfc
-- NDEFRecord: https://developer.mozilla.org/en-US/docs/Web/API/NDEFRecord
-- Web Share API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Share_API
-- GitHub Pages: https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+Nessuna dipendenza esterna viene caricata dalla PWA dopo il primo caricamento. Le letture non sono inviate a un server.

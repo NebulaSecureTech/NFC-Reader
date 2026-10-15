@@ -1,0 +1,73 @@
+name: Compila EXE portable Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Portable Windows x64 - senza addon nativi Node
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Scarica i sorgenti
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test Web/PWA
+        shell: pwsh
+        run: node --test tests/*.test.mjs
+
+      - name: Compila bridge WinSCard Windows
+        shell: powershell
+        run: '& .\electron\bridge\build.ps1'
+
+      - name: Installa Electron (nessun driver npm nativo)
+        working-directory: electron
+        shell: pwsh
+        run: npm install --no-audit --no-fund
+
+      - name: Test bridge protocollo, PC/SC e NDEF
+        working-directory: electron
+        shell: pwsh
+        run: npm test
+
+      - name: Verifica bridge creato
+        shell: pwsh
+        run: |
+          if (!(Test-Path electron/bin/NfcPcscBridge.exe)) { throw 'Bridge PC/SC mancante' }
+          $package = Get-Content electron/package.json -Raw | ConvertFrom-Json
+          if ($package.dependencies -and $package.dependencies.PSObject.Properties.Count -gt 0) { throw 'Il progetto portable non deve dipendere da addon Node nativi' }
+
+      - name: Compila NFC Reader portable .exe
+        working-directory: electron
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist:win
+
+      - name: Verifica il file finale
+        shell: pwsh
+        run: |
+          $file = 'electron/dist/NFC-Reader-Portable-1.8.0-x64.exe'
+          if (!(Test-Path $file)) { throw "EXE portable non trovato: $file" }
+          $size = (Get-Item $file).Length
+          if ($size -lt 10MB) { throw 'EXE sospettosamente piccolo' }
+          Write-Host "Pronto per la Release: $file ($size bytes)"
+
+      - name: Scarica un unico EXE portable dagli Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NFC-Reader-Portable-Windows-x64
+          path: electron/dist/NFC-Reader-Portable-1.8.0-x64.exe
+          if-no-files-found: error
+          retention-days: 30
