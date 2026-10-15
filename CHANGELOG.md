@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.8.3 · 15 ottobre 2026
+
+- **Lettura multipla** rinominata come opzione: disattivata di default, legge un solo tag e mostra automaticamente i dettagli. La preferenza precedente `singleMode` non impone più la scansione continua.
+- **Storico aggiornato sui tag riscritti**: lo stesso UID con un record NDEF diverso aggiorna la riga esistente (evita il vecchio contenuto conservato dal filtro duplicati). Una lettura NDEF vuota non sovrascrive il contenuto valido precedente.
+- **Verifica NDEF semantica**: dopo `FF D6`, rilegge tutta la struttura e confronta il record Testo/URL con la richiesta. Non basta la risposta `9000` o il confronto binario dei blocchi.
+- **MIFARE Classic 1K**: diagnostica del GPB di MAD e settori NDEF; evita scritture su mappature NDEF non conformi, senza alterare MAD o trailer. Le TLV a lunghezza zero vengono segnalate come vuote.
+- **Finestra Electron**: dimensione minima 1024 × 720 px e spaziature desktop per impedire scrollbar sulla schermata di lettura.
+- Aggiornati test, Service Worker, release e build Windows portable.
+
+## v1.8.2 · 15 ottobre 2026
+
+- Supporto aggiuntivo alla lettura e scrittura NDEF MIFARE Classic 1K *già formattate* con MAD1 e chiavi standard su ACS ACR122U.
+- Autenticazione per settore, validazione CRC e ACL, nessuna scrittura fuori dai blocchi dati NDEF, verifica post-scrittura.
+- Corretto crash `write EPIPE` alla chiusura di Electron: gestione stream asincrona e arresto del bridge senza inviare `QUIT` a stdin potenzialmente chiuso.
+- Aggiornati workflow, documentazione, test e cache della PWA.
+
+
+## v1.8.1 · 15 ottobre 2026
+- **Fix ACS ACR122 (6300):** identifica il tipo di tag tramite ATR PC/SC prima di leggere la memoria NDEF.
+- I tag MIFARE Classic e gli altri tipi non-Type2 espongono solo l'UID quando disponibile: niente letture NDEF improprie e **nessun comando di scrittura**.
+- La scrittura Type 2 richiede un ATR riconosciuto e i controlli già presenti su Capability Container, layout TLV, capacità e verifica successiva.
+- Se una lettura CC da 4 byte fallisce con `6300`, prova una sola volta la lettura **di sola lettura** da 16 byte, prevista dal protocollo ACS.
+- Dettagli tag desktop: **tipo di carta, lettore, ATR e motivo dell'assenza di dati NDEF**; le informazioni vengono conservate nello storico e disponibili nella condivisione.
+- Migliorati i messaggi di errore durante la scrittura, senza falsi messaggi di riuscita.
+- Portabilità Windows e struttura unica Vue / GitHub Pages / Electron invariate.
+
 ## v1.8.0 · 15 ottobre 2026
 
 - **Portabile vero**: produzione di un solo `NFC-Reader-Portable-1.8.0-x64.exe` tramite electron-builder portable; niente installer, nessuna cartella accessoria da distribuire.

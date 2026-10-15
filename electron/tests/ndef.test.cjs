@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {encodeMessage,tlv,extractTlv,parseMessage,readCapability,readTag,writeTag}=require('../ndef.cjs');
+const {encodeMessage,tlv,extractTlv,parseMessage,readCapability,readTag,writeTag,assertVerifiedNdef}=require('../ndef.cjs');
 function tag(cap=144, readOnly=false) {
  const memory=Buffer.alloc(4+cap,0);
  memory[0]=0xE1;memory[1]=0x10;memory[2]=cap/8;memory[3]=readOnly?0x0F:0;
@@ -57,4 +57,40 @@ test('TLV esteso e bounds',()=>{
  const encoded=tlv(bytes);const found=extractTlv(encoded);assert.deepEqual(found.bytes,bytes);
  assert.throws(()=>extractTlv(Buffer.from([0x03,0x12,0x41])),/supera/);
  assert.equal(readCapability(Buffer.from([0xe1,0x10,0x12,0])).capacity,144);
+});
+
+test('Fallback di sola lettura 16 byte dopo 6300 sulla pagina CC',async()=>{
+ const cc=Buffer.from([0xE1,0x10,0x12,0x00]);
+ const memory=Buffer.alloc(144);memory.set([0x03,0x00,0xFE]);
+ const calls=[];
+ const reader={
+  async read(page,length){
+   calls.push([page,length]);
+   if(page===3&&length===4)throw new Error('Lettura pagina NDEF: il lettore ha risposto 6300.');
+   if(page===3&&length===16)return Buffer.concat([cc,memory.subarray(0,12)]);
+   return memory.subarray((page-4)*4,(page-4)*4+length);
+  },
+  async write(){throw new Error('Should not write in read-only probe');}
+ };
+ const result=await readTag(reader);
+ assert.equal(result.supported,true);
+ assert.deepEqual(calls[0],[3,4]);assert.deepEqual(calls[1],[3,16]);
+});
+
+// Version 1.8.3 - a tag is only verified when its NDEF payload decodes exactly.
+test('Verifica NDEF confronta il testo letto, non soltanto i blocchi',()=>{
+ const good=parseMessage(encodeMessage({kind:'text',value:'Nuovo dato'}));
+ assert.equal(assertVerifiedNdef(good,{kind:'text',value:'Nuovo dato'}),true);
+ assert.throws(()=>assertVerifiedNdef(good,{kind:'text',value:'Altro dato'}),/Verifica NDEF fallita/);
+ assert.throws(()=>assertVerifiedNdef([],{kind:'text',value:'Nuovo dato'}),/Verifica NDEF fallita/);
+ assert.throws(()=>assertVerifiedNdef(good,{kind:'url',value:'https://example.com'}),/Verifica NDEF fallita/);
+});
+test('NDEF malformato: un frame senza MB o ME non risulta leggibile',()=>{
+ const frame=encodeMessage({kind:'text',value:'ciao'});
+ const noMb=Buffer.from(frame);noMb[0]&=0x7F;
+ assert.throws(()=>parseMessage(noMb),/MB/);
+ const noMe=Buffer.from(frame);noMe[0]&=0xBF;
+ assert.throws(()=>parseMessage(noMe),/ME/);
+ const extra=Buffer.concat([frame,Buffer.from([0])]);
+ assert.throws(()=>parseMessage(extra),/extra/);
 });

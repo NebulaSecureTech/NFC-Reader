@@ -186,3 +186,14 @@ test('limiti espliciti per dati NDEF e recupero di record malformati',()=>{
   assert.equal(restored[0].records.length,1);
   assert.equal(restored[0].records[0].hex,'');
 });
+
+
+test('Metadati Windows PC/SC conservati nello storico e disponibili in condivisione',async()=>{
+ const {shareTagText}=await import('../assets/js/core.mjs');
+ const original={id:'a',uid:'04AABBCC',key:'uid:04AABBCC',content:'',timestamp:'2026-10-15T08:00:00Z',records:[],ndefBytes:0,
+   reader:'ACS ACR122 0',cardType:'MIFARE Classic 1K',atr:'3B8F8001804F0CA000000306030001000000006A',ndefInfo:'Tag non compatibile'};
+ const saved=restoreEntries([original])[0];
+ assert.equal(saved.cardType,'MIFARE Classic 1K');assert.equal(saved.atr,original.atr);
+ assert.match(shareTagText(saved),/MIFARE Classic 1K/);
+ assert.match(shareTagText(saved),/ATR PC\/SC/);
+});

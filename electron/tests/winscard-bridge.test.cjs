@@ -18,8 +18,8 @@ test('Protocol initialization, device enumeration, insertion, reply and removal'
  const events=[];bridge.on('event',e=>events.push(e));
  const start=bridge.start();child.emitLine('READY');await start;
  child.emitLine('READERS\t'+b64('ACS ACR122U PICC Interface'));
- child.emitLine('PRESENT\t'+b64('ACS ACR122U PICC Interface')+'\t1');
- assert.equal(events[0].readers.length,1);assert.equal(events[1].token,1);
+ child.emitLine('PRESENT\t'+b64('ACS ACR122U PICC Interface')+'\t1\t3B8F8001804F0CA0000003060300030000000068');
+ assert.equal(events[0].readers.length,1);assert.equal(events[1].token,1);assert.equal(events[1].atr,'3B8F8001804F0CA0000003060300030000000068');
  const request=bridge.transmit('ACS ACR122U PICC Interface',1,[0xFF,0xCA,0,0,0]);
  assert.match(child.sent,/TRANSMIT\t1\t/);
  child.emitLine('REPLY\t1\tOK\t04AABBCC9000');
@@ -44,4 +44,23 @@ test('FATAL protocol produces a meaningful Windows Smart Card error',async()=>{
  const child=new FakeProcess();const run=new WinScardBridge({platform:'win32',exePath:'X',existsFn:()=>true,spawnFn:()=>child});
  const start=run.start();child.emitLine('FATAL\t'+b64('Servizio Smart Card inattivo'));
  await assert.rejects(start,/Servizio Smart Card inattivo/);run.stop();
+});
+
+test('Closing Electron ignores delayed asynchronous write EPIPE from child stdin',async()=>{
+ const child=new FakeProcess();
+ const bridge=new WinScardBridge({platform:'win32',exePath:'X',existsFn:()=>true,spawnFn:()=>child});
+ const start=bridge.start();child.emitLine('READY');await start;
+ bridge.stop();
+ const e=Object.assign(new Error('write EPIPE'),{code:'EPIPE'});
+ assert.doesNotThrow(()=>child.stdin.emit('error',e));
+ assert.equal(bridge.closing,true);
+});
+test('Unexpected EPIPE while running reports unavailable without unhandled errors',async()=>{
+ const child=new FakeProcess();
+ const bridge=new WinScardBridge({platform:'win32',exePath:'X',existsFn:()=>true,spawnFn:()=>child});
+ const start=bridge.start();child.emitLine('READY');await start;
+ let unavailable='';bridge.on('unavailable',message=>{unavailable=message;});
+ child.stdin.emit('error',Object.assign(new Error('write EPIPE'),{code:'EPIPE'}));
+ assert.match(unavailable,/EPIPE/);
+ bridge.stop();
 });

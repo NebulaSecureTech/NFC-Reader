@@ -36,6 +36,15 @@ class WinScardBridge extends EventEmitter {
       const timer=setTimeout(()=>{finish(new Error('Timeout di avvio WinSCard. Controlla il servizio Smart Card.'));this.stop();},timeoutMs);
       try {
         this.proc=this.spawnFn(this.exePath,[],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+        // Writable stream errors are ASYNCHRONOUS. try/catch around write() does
+        // not prevent an unhandled EPIPE when the helper exits during shutdown.
+        this.proc.stdin.on('error',err=>{
+          if(this.closing)return;
+          finish(err);
+          this.ready=false;
+          this.failPending(err);
+          this.emit('unavailable',`Comunicazione PC/SC interrotta: ${err.message}`);
+        });
         this.rl=createInterface({input:this.proc.stdout,crlfDelay:Infinity});
         this.rl.on('line',line=>{
           if(line==='READY'){this.ready=true;finish();return;}
@@ -61,7 +70,9 @@ class WinScardBridge extends EventEmitter {
     } else if(parts[0]==='PRESENT' || parts[0]==='REMOVED') {
       const token=Number(parts[2]);
       if(!Number.isSafeInteger(token)||token<=0)return;
-      this.emit('event',{type:parts[0]==='PRESENT'?'present':'removed',reader:decode(parts[1]),token});
+      const atr = parts[0] === 'PRESENT' && /^[0-9A-Fa-f]{2,72}$/.test(parts[3]||'') && (parts[3]||'').length%2===0
+        ? parts[3].toUpperCase() : '';
+      this.emit('event',{type:parts[0]==='PRESENT'?'present':'removed',reader:decode(parts[1]),token,atr});
     } else if(parts[0]==='ERROR') {
       this.emit('error-status',decode(parts[1]));
     } else if(parts[0]==='REPLY') {
@@ -81,7 +92,7 @@ class WinScardBridge extends EventEmitter {
     if(!this.proc||!this.ready||this.closing)throw new Error('Servizio PC/SC non connesso.');
     if(typeof reader!=='string'||!reader||!Number.isSafeInteger(token)||token<=0)throw new Error('Lettore o tag non valido.');
     const bytes=Buffer.from(command);
-    if(bytes.length<5||bytes.length>260||bytes[0]!==0xFF||![0xCA,0xB0,0xD6].includes(bytes[1]))throw new Error('Comando PC/SC non consentito.');
+    if(bytes.length<5||bytes.length>260||bytes[0]!==0xFF||![0xCA,0xB0,0xD6,0x82,0x86].includes(bytes[1]))throw new Error('Comando PC/SC non consentito.');
     const id=String(++this.nextId);
     return new Promise((resolve,reject)=>{
       const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error('Il lettore non ha risposto entro 10 secondi.'));},10000);
@@ -94,7 +105,11 @@ class WinScardBridge extends EventEmitter {
   stop() {
     this.closing=true;this.ready=false;
     this.failPending(new Error('Bridge PC/SC arrestato.'));
-    if(this.proc){try{this.proc.stdin.write('QUIT\n');}catch(_){}
+    if(this.proc){
+      // No late writes to an already closed pipe: this was the 'write EPIPE'
+      // crash on application exit. Closing the stream and terminating the child
+      // also makes the Windows Smart Card handles release immediately.
+      try{this.proc.stdin.destroy();}catch(_){}
       try{this.proc.kill();}catch(_){}
     }
     this.rl?.close();this.rl=null;

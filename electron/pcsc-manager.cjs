@@ -1,7 +1,9 @@
 'use strict';
 const {readTag,writeTag,assertWriteRequest}=require('./ndef.cjs');
-const {readUid,isSupportedWriter,type2Adapter}=require('./pcsc-apdu.cjs');
+const {readUid,isSupportedWriter,type2Adapter,classic1kAdapter}=require('./pcsc-apdu.cjs');
+const {readClassicTag,writeClassicTag}=require('./mifare-classic.cjs');
 const {WinScardBridge}=require('./winscard-bridge.cjs');
+const {identifyCard,unsupportedWriteMessage}=require('./card-identify.cjs');
 
 // UI-neutral PC/SC state machine. A bridge can be injected for tests.
 class PcscManager {
@@ -36,13 +38,14 @@ class PcscManager {
     if(event.type==='readers') {
       const names=Array.isArray(event.readers)?event.readers.filter(name=>typeof name==='string'&&name):[];
       for(const name of this.readers.keys())if(!names.includes(name))this.readers.delete(name);
-      for(const name of names)if(!this.readers.has(name))this.readers.set(name,{token:0,present:false,processed:0,busy:false});
+      for(const name of names)if(!this.readers.has(name))this.readers.set(name,{token:0,present:false,processed:0,busy:false,cardInfo:identifyCard('')});
       this.sendStatus();
     } else if(event.type==='present' && typeof event.reader==='string') {
-      if(!this.readers.has(event.reader))this.readers.set(event.reader,{token:0,present:false,processed:0,busy:false});
+      if(!this.readers.has(event.reader))this.readers.set(event.reader,{token:0,present:false,processed:0,busy:false,cardInfo:identifyCard('')});
       const slot=this.readers.get(event.reader);
       if(slot.token===event.token&&slot.present)return;
       slot.token=event.token;slot.present=true;slot.busy=false;slot.processed=0;
+      slot.cardInfo=identifyCard(event.atr);
       this.error='';this.sendStatus();
       this.runTag(event.reader,slot);
     } else if(event.type==='removed') {
@@ -63,6 +66,7 @@ class PcscManager {
     const card={transmit:bytes=>this.bridge.transmit(name,token,bytes)};
     const uid=await readUid(card);
     const adapter=type2Adapter(card,name);
+    const cardInfo=this.readers.get(name)?.cardInfo || identifyCard('');
     const stillHere=()=>{
       const slot=this.readers.get(name);
       return slot?.present && slot.token===token;
@@ -76,19 +80,42 @@ class PcscManager {
       try {
         if(!isSupportedWriter(name))throw new Error('Per scrivere serve un ACS ACR122U compatibile.');
         if(!uid)throw new Error('UID non leggibile: scrittura annullata per sicurezza.');
-        const result=await writeTag(adapter,pending.data);
+        // Writing is permitted only for recognized Type 2 or verified NDEF-formatted Classic 1K.
+        if(!['type2','classic1k'].includes(cardInfo.kind))throw new Error(unsupportedWriteMessage(cardInfo));
+        const result=cardInfo.kind==='classic1k'
+          ? await writeClassicTag(classic1kAdapter(card,name),pending.data)
+          : await writeTag(adapter,pending.data);
         if(!stillHere())throw new Error('Tag rimosso durante la verifica della scrittura.');
-        this.emit({type:'write-result',ok:true,uid,reader:name,...result});
-      }catch(err){this.emit({type:'write-result',ok:false,uid,reader:name,message:err?.message||'Errore scrittura PC/SC.'});}
+        this.emit({type:'write-result',ok:true,uid,reader:name,cardType:cardInfo.name,atr:cardInfo.atr,...result});
+      }catch(err){
+        const original=err?.message||'Errore scrittura PC/SC.';
+        const message=/\b6300\b/.test(original)
+          ? `Operazione NFC non riuscita (6300). ${cardInfo.name}: verifica formattazione NDEF e autorizzazioni di settore. ATR: ${cardInfo.atr||'non disponibile'}.`
+          : original;
+        this.emit({type:'write-result',ok:false,uid,reader:name,cardType:cardInfo.name,atr:cardInfo.atr,message});
+      }
       finally{this.writeBusy=false;this.sendStatus();}
       return;
     }
     if(!this.reading||this.writeBusy)return;
     let records=[];let ndefInfo='';
-    try {const data=await readTag(adapter);records=data.records;ndefInfo=data.reason||'';}
-    catch(err){ndefInfo=err?.message||'Contenuto NDEF non disponibile sul lettore.';}
+    if(cardInfo.kind==='other') {
+      ndefInfo=`${cardInfo.name}: UID leggibile; accesso NDEF Type 2 non supportato. Non sono stati tentati comandi di lettura della memoria.`;
+    } else {
+      try {
+        const data=cardInfo.kind==='classic1k'
+          ? await readClassicTag(classic1kAdapter(card,name))
+          : await readTag(adapter);
+        records=data.records;ndefInfo=[data.reason,data.formatWarning].filter(Boolean).join(' ');
+      }
+      catch(err){
+        ndefInfo=/\b6300\b/.test(err?.message||'')
+          ? `Lettura NDEF non riuscita (6300): ${cardInfo.name}. Chiavi di settore non disponibili, tag non NDEF o lettore incompatibile.`
+          : err?.message||'Contenuto NDEF non disponibile sul lettore.';
+      }
+    }
     if(this.reading&&!this.writeBusy&&stillHere() && (uid||records.length)){
-      this.emit({type:'reading',uid,reader:name,records,ndefInfo});
+      this.emit({type:'reading',uid,reader:name,records,ndefInfo,cardType:cardInfo.name,atr:cardInfo.atr});
     }
   }
   startScan() {

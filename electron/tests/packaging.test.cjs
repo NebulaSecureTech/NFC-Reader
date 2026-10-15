@@ -20,6 +20,13 @@ test('Windows runner builds bridge first, then portable and checks result',()=>{
  const compile=workflow.indexOf('Compila bridge WinSCard Windows');
  const packageStep=workflow.indexOf('Compila NFC Reader portable');
  assert.ok(compile>0&&packageStep>compile);
- assert.match(workflow,/NFC-Reader-Portable-1\.8\.0-x64\.exe/);
+ assert.match(workflow,/NFC-Reader-Portable-1\.8\.3-x64\.exe/);
  assert.doesNotMatch(workflow,/pcsc-mini|node-gyp|npm run rebuild/);
+});
+
+test('finestra desktop con altezza minima e vista lettore senza scroll',()=>{
+ const main=text('main.cjs');
+ assert.match(main,/height:850,minWidth:1024,minHeight:720/);
+ const css=readFileSync(join(root,'../assets/css/style.css'),'utf8');
+ assert.match(css,/\.reader-panel \{ overflow: hidden; \}/);
 });

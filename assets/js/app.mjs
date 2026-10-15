@@ -1,10 +1,10 @@
 import {
   MAX_ENTRIES, REPEAT_DELAY_MS, parseNfcReading, restoreEntries, normalizeUid,
   formattedTime, formattedShortDate, formattedTimestamp, exportCsv, exportTxt, nfcErrorMessage, shareTagText,
-} from './core.mjs?v=1.8.0';
-import {prepareAudio, playSound} from './sound.mjs?v=1.8.0';
+} from './core.mjs?v=1.8.3';
+import {prepareAudio, playSound} from './sound.mjs?v=1.8.3';
 
-const VERSION = '1.8.0';
+const VERSION = '1.8.3';
 // Retain the original keys: upgrading in the same origin preserves the archive.
 const STORAGE_ENTRIES = 'nfc-reader.entries.v1';
 const STORAGE_SETTINGS = 'nfc-reader.settings.v1';
@@ -100,7 +100,7 @@ if (!window.Vue) {
         volume: Number.isFinite(savedSettings.volume) ? Math.max(0, Math.min(100, savedSettings.volume)) : 65,
         vibrationEnabled: savedSettings.vibrationEnabled !== false,
         ignoreDuplicates: savedSettings.ignoreDuplicates !== false,
-        singleMode: savedSettings.singleMode === true,
+        multiRead: savedSettings.multiRead === true, // nuova impostazione: OFF = una lettura e dettagli
         keepScreenAwake: savedSettings.keepScreenAwake === true,
         includeNumber: savedSettings.includeNumber !== false,
         theme: ['auto', 'light', 'dark'].includes(savedSettings.theme) ? savedSettings.theme : 'auto',
@@ -115,6 +115,7 @@ if (!window.Vue) {
     },
     computed: {
       isDesktop() { return !!desktopBridge; },
+      singleMode() { return !this.multiRead; },
       connectedReaderLabel() {
         if (!this.isDesktop) return '';
         if (!this.desktopStatus.available) return this.desktopStatus.error || 'Sistema PC/SC non disponibile';
@@ -145,7 +146,7 @@ if (!window.Vue) {
         if (this.blocked) return 'Controlla l\u2019archivio';
         if (this.entries.length >= MAX_ENTRIES) return 'Archivio completo';
         if (this.scanState === 'starting') return 'Attivazione NFC';
-        return this.running ? 'Avvicina un tag' : (this.singleMode ? 'Lettura singola' : 'Pronto alla lettura');
+        return this.running ? 'Avvicina un tag' : 'Pronto alla lettura';
       },
       readerSubtitle() {
         if (!this.supported) return this.isDesktop ? (this.desktopStatus.error||'Impossibile accedere al lettore PC/SC.') : 'Apri questa app con Chrome su Android.';
@@ -153,7 +154,7 @@ if (!window.Vue) {
         if (this.blocked) return 'Esporta i tag e risolvi l\u2019avviso in alto.';
         if (this.entries.length >= MAX_ENTRIES) return 'Esporta e svuota lo storico per continuare.';
         if (this.scanState === 'starting') return 'Consenti l\u2019accesso NFC, se richiesto.';
-        return this.running ? (this.singleMode ? 'Dopo la lettura vedrai tutti i dati.' : 'Un tag dopo l\u2019altro, senza premere altro.') : (this.singleMode ? 'Una lettura alla volta, con dettagli automatici.' : 'Premi Avvia per iniziare la raccolta.');
+        return this.running ? (this.singleMode ? 'Dopo la lettura vedrai tutti i dati.' : 'Un tag dopo l\u2019altro, senza premere altro.') : (this.singleMode ? 'Un tag alla volta, poi si apre il dettaglio.' : 'Premi Avvia per iniziare la raccolta.');
       },
       readerHint() {
         if (!this.supported) return this.isDesktop ? 'Controlla driver e servizio Smart Card di Windows.' : 'NFC attivo, sito HTTPS e tag NDEF.';
@@ -227,14 +228,30 @@ if (!window.Vue) {
         if (event.type==='status') { this.desktopStatus={available:!!event.available,readers:event.readers||[],error:event.error||''}; return; }
         if (event.type==='write-result') {
           this.writeState=event.ok?'success':'error';
-          this.writeMessage=event.ok?`Tag scritto e verificato${event.uid?' · '+event.uid:''}.`:(event.message||'Errore scrittura.');
-          if (event.ok) {this.writeConfirmed=false;this.emitFeedback('success','Scrittura completata');}
-          else this.emitFeedback('error','Scrittura non riuscita',this.writeMessage);
+          this.writeMessage=event.ok
+            ? `Scrittura e lettura NDEF verificate${event.uid?' · '+event.uid:''}. Rimuovi e riavvicina il tag per un controllo indipendente.`
+            : (event.message||'Errore scrittura.');
+          if (event.ok) {
+            this.writeConfirmed=false;
+            const verified=(event.verifiedRecords||[]).map(r=>({...r,data:Uint8Array.from(r.data||[])}));
+            if (verified.length && event.uid) {
+              try {
+                const data=parseNfcReading({serialNumber:event.uid,message:{records:verified}});
+                if(data){
+                  const refreshed=this.refreshExistingTag({...data,reader:event.reader||'',cardType:event.cardType||'',atr:event.atr||'',ndefInfo:'NDEF riletto dopo la scrittura.'});
+                  if(refreshed==='failed')this.writeMessage+=' Attenzione: impossibile aggiornare lo storico locale, esportalo.';
+                }
+              } catch (_) {this.writeMessage+=' Impossibile aggiornare il dettaglio nello storico.';}
+            }
+            this.emitFeedback('success','Scrittura verificata');
+          } else this.emitFeedback('error','Scrittura non riuscita',this.writeMessage);
           return;
         }
         if (event.type==='reading' && this.running) {
           const converted=(event.records||[]).map(r=>({...r,data:Uint8Array.from(r.data||[])}));
-          this.handleReading({serialNumber:event.uid||'',message:{records:converted}});
+          this.handleReading({serialNumber:event.uid||'',message:{records:converted},desktopMeta:{
+            reader:event.reader||'', cardType:event.cardType||'', atr:event.atr||'', ndefInfo:event.ndefInfo||''
+          }});
         }
       },
       chooseWriteKind(kind) {this.writeKind=kind;this.writeValue='';this.resetWriteApproval();},
@@ -368,11 +385,30 @@ if (!window.Vue) {
         this.releaseWakeLock();
       },
       toggleScan() { if (this.running) this.stopScan(); else this.startScan(); },
+      refreshExistingTag(tag) {
+        // A card has the same UID after it is rewritten: an ignored duplicate must
+        // still refresh its NDEF details. Never erase good data on a failed/empty read.
+        const previousIndex=this.entries.findIndex(e=>e.key===tag.key);
+        if(previousIndex<0) return false;
+        const old=this.entries[previousIndex];
+        const hasNdef=Array.isArray(tag.records) && tag.records.length>0 && !!tag.content;
+        if(!hasNdef)return false;
+        const before=JSON.stringify(old.records||[]);
+        const after=JSON.stringify(tag.records);
+        if(old.content===tag.content && before===after)return false;
+        const updated={...old,...tag,id:old.id,key:old.key};
+        // Keep a single UID and place the updated card at the end as the newest scan.
+        this.entries=[...this.entries.slice(0,previousIndex),...this.entries.slice(previousIndex+1),updated];
+        this.latestRead=updated;
+        this.latestUnsaved=false;
+        return this.persistEntries()?updated:'failed';
+      },
       handleReading(event) {
         let tag;
         try { tag = parseNfcReading(event); }
         catch (error) { this.reportReadError(error instanceof RangeError ? error.message : 'Contenuto NDEF non leggibile.', true); return; }
         if (!tag) { this.reportReadError('Tag rilevato, ma senza UID o dati NDEF utilizzabili.', true); return; }
+        if (event.desktopMeta) tag = {...tag, ...event.desktopMeta};
         // One-shot mode accepts exactly one valid reading. Stop the reader BEFORE
         // any storage or modal work, so queued NFC events cannot add further tags.
         const oneShot = this.singleMode;
@@ -385,9 +421,21 @@ if (!window.Vue) {
         if (duplicate) {
           this.duplicates++;
           if (this.ignoreDuplicates) {
+            const updated=this.refreshExistingTag(tag);
+            if(updated==='failed') {
+              this.stopScan();
+              this.reportReadError('Contenuto aggiornato ma storico non salvato: esporta prima di chiudere.');
+              if(oneShot)this.openDetail(tag,true);
+              return;
+            }
+            if(updated){
+              this.emitFeedback('success', 'Dati del tag aggiornati', 'Stesso UID, nuovo contenuto NDEF nello storico.', updated);
+              if(oneShot)this.openDetail(updated);
+              return;
+            }
             this.latestRead = tag;
             this.latestUnsaved = true;
-            this.emitFeedback('duplicate', 'Tag gi\u00e0 presente', 'Doppione non aggiunto allo storico.', tag);
+            this.emitFeedback('duplicate', 'Tag già presente', tag.ndefInfo || 'Doppione non aggiunto allo storico.', tag);
             if (oneShot) this.openDetail(tag, true);
             return;
           }
@@ -409,7 +457,7 @@ if (!window.Vue) {
           return;
         }
         this.emitFeedback(duplicate ? 'duplicate' : 'success', duplicate ? 'Doppione salvato' : 'Tag acquisito',
-          duplicate ? 'Filtro duplicati disattivato.' : (tag.uid ? '' : 'UID assente: salvato il contenuto NDEF.'), tag);
+          duplicate ? 'Filtro duplicati disattivato.' : (tag.ndefInfo || (tag.uid ? '' : 'UID assente: salvato il contenuto NDEF.')), tag);
         if (oneShot) this.openDetail(newEntry);
       },
       persistEntries() {
@@ -488,7 +536,7 @@ if (!window.Vue) {
         try {
           localStorage.setItem(STORAGE_SETTINGS, JSON.stringify({
             soundEnabled: this.soundEnabled, alertSoundEnabled: this.alertSoundEnabled, volume: this.volume,
-            vibrationEnabled: this.vibrationEnabled, ignoreDuplicates: this.ignoreDuplicates, singleMode: this.singleMode,
+            vibrationEnabled: this.vibrationEnabled, ignoreDuplicates: this.ignoreDuplicates, multiRead: this.multiRead,
             keepScreenAwake: this.keepScreenAwake, includeNumber: this.includeNumber, theme: this.theme,
           }));
         } catch (_) { this.notify('Preferenze non salvate su questo dispositivo.', 'error'); }

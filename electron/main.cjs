@@ -29,7 +29,7 @@ app.whenReady().then(()=>{
     }catch(_){return new Response('Not found',{status:404});}
   });
   win=new BrowserWindow({
-    width:1320,height:810,minWidth:850,minHeight:520,
+    width:1320,height:850,minWidth:1024,minHeight:720,
     backgroundColor:'#f7f8fc',title:'NFC Reader',autoHideMenuBar:true,
     webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true},
   });

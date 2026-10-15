@@ -1,20 +1,23 @@
-# NFC Reader 1.8.0 - risultati e collaudi
+# NFC Reader v1.8.3 — Verifiche
 
-## Test eseguiti
+## Test automatici eseguiti
 
-**57 test JavaScript superati**: 36 per Web/PWA e 21 per Electron, protocollo WinSCard simulato e packaging. Nessun test su lettore fisico eseguito.
+- **39 / 39 Web/PWA**: parsing NDEF, esportazione, suoni, cache offline, default Lettura multipla disattivata, codice per aggiornamento dello stesso UID.
+- **47 / 47 Electron/PC/SC**: codec NDEF, lettura e scrittura Type 2, MIFARE Classic 1K, autenticazione, MAD/CRC, GPB, blocco dei formati non standard, readback con confronto del contenuto, test di una nuova presentazione, validazione del pacchetto e protezione EPIPE.
+- **Totale 86 / 86 test superati** con Node.js 22.
+- Verificati sintatticamente `assets/js/app.mjs`, `electron/main.cjs`, `electron/ndef.cjs`, `electron/mifare-classic.cjs`.
 
-- `node --test tests/*.test.mjs`: parser/esportazione, PWA, suoni e cache.
-- `cd electron && npm test`: codec NDEF Type 2, APDU `FF CA/B0/D6`, gestione UID, blocco scrittura su lettori non supportati, inserimento/rimozione simulati, protocollo del bridge, errori PC/SC e annullamenti.
-- GitHub Actions Windows compila `NfcPcscBridge.cs` tramite Windows PowerShell 5.1, poi verifica che il file sia disponibile, esegue i test e costruisce un solo `.exe` portable.
+## Vincoli della verifica
 
-## Collaudi ancora necessari
+- I test hardware utilizzano **lettori simulati**. Il codice non è stato ancora provato sul tuo ACS ACR122 reale.
+- In questa sessione il browser di verifica ha bloccato anche le pagine locali, perciò la nuova resa visiva desktop/mobile **non è certificata da screenshot browser**; sono stati aggiornati i vincoli CSS e della finestra.
+- La creazione effettiva dell'EXE richiede GitHub Actions su Windows. L'eseguibile non è incluso nel repository.
+- I reader MIFARE Classic non garantiscono che applicazioni terze sappiano interpretare NDEF anche se questa app rilegge correttamente la memoria.
 
-1. Verificare l'esito della prima workflow GitHub Actions su `windows-latest` e l'esistenza di `NFC-Reader-Portable-1.8.0-x64.exe`.
-2. Avviare l'EXE su Windows 10/11 x64 con lettore PC/SC collegato; verificare enumerazione, inserimento e rimozione tag e lettura UID.
-3. Verificare eventuali limitazioni dovute ad antivirus e SmartScreen sull'esecuzione del bridge incorporato.
-4. Su ACR122U reale, provare lettura Type 2 e scrittura con un tag NDEF di test sacrificabile, poi rileggere su Android.
-5. Verificare lettura singola, lettura continua, gestione duplicati, esportazione CSV/TXT e storico persistente.
-6. Verificare funzionalità della PWA su Android reale dopo aggiornamento dalla versione precedente.
+## Per il collaudo fisico
 
-**I test JavaScript e la compilazione del frontend non equivalgono a un collaudo hardware reale.**
+1. Inserisci una MIFARE Classic 1K **personale, già NDEF**; prova a leggerla con un UID e controlla i dettagli.
+2. Da Scrivi, scrivi un breve testo di test, attendi la **verifica del record decodificato** e la notifica di esito.
+3. Allontana completamente la tessera e riavvicinala in Lettore: verifica che il testo sia presente nel dettaglio e nello Storico.
+4. Se un'app terza non legge, controlla il **GPB/MAD** segnalato dal dettaglio; la formattazione NDEF può non essere riconosciuta da quell'app.
+5. Verifica lettura multipla ON/OFF e finestra Windows su un monitor a risoluzione 1366×768 o superiore.

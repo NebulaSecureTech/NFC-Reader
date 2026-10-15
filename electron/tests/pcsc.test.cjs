@@ -6,7 +6,7 @@ const {PcscManager}=require('../pcsc-manager.cjs');
 const wait=()=>new Promise(resolve=>setTimeout(resolve,60));
 class FakeWinScardBridge extends EventEmitter {
  constructor(name='ACS ACR122U PICC Interface') {
-  super();this.name=name;this.token=1;this.started=false;this.writes=0;
+  super();this.name=name;this.token=1;this.started=false;this.writes=0;this.reads=0;this.atr='3B8F8001804F0CA0000003060300030000000068';
   this.memory=Buffer.alloc(148);this.memory.set([0xE1,0x10,0x12,0x00,0x03,0,0xFE]);
  }
  async start(){this.started=true;this.emit('event',{type:'readers',readers:[this.name]});}
@@ -15,11 +15,11 @@ class FakeWinScardBridge extends EventEmitter {
   assert.equal(name,this.name);assert.equal(token,this.token);
   const cmd=Buffer.from(data);
   if(cmd[1]===0xCA)return Buffer.from([0x04,0xAA,0xBB,0xCC,0x90,0]);
-  if(cmd[1]===0xB0){const pos=(cmd[3]-3)*4;return Buffer.concat([this.memory.subarray(pos,pos+cmd[4]),Buffer.from([0x90,0])]);}
+  if(cmd[1]===0xB0){this.reads++;const pos=(cmd[3]-3)*4;return Buffer.concat([this.memory.subarray(pos,pos+cmd[4]),Buffer.from([0x90,0])]);}
   if(cmd[1]===0xD6){const pos=(cmd[3]-3)*4;cmd.subarray(5,9).copy(this.memory,pos);this.writes++;return Buffer.from([0x90,0]);}
   return Buffer.from([0x6A,0x81]);
  }
- insert(){this.emit('event',{type:'present',reader:this.name,token:this.token});}
+ insert(){this.emit('event',{type:'present',reader:this.name,token:this.token,atr:this.atr});}
  remove(){this.emit('event',{type:'removed',reader:this.name,token:this.token});this.token++;}
 }
 function fixture(name){const bridge=new FakeWinScardBridge(name);const events=[];const manager=new PcscManager(event=>events.push(event),bridge);return {bridge,events,manager};}
@@ -61,5 +61,40 @@ test('Reject unknown readers and unsafe URLs for writing',async()=>{
 test('Bridge error after startup disables scan rather than claiming online',async()=>{
  const m=fixture();await m.manager.init();m.bridge.emit('unavailable','Bridge terminato');
  assert.equal(m.manager.status().available,false);assert.equal(m.manager.startScan().ok,false);
+ m.manager.shutdown();
+});
+
+test('MIFARE Classic ATR: UID remains readable; no writable NDEF layout means zero data writes',async()=>{
+ const m=fixture();m.bridge.atr='3B8F8001804F0CA000000306030001000000006A';
+ await m.manager.init();assert.equal(m.manager.startScan().ok,true);
+ m.bridge.insert();await wait();
+ const read=m.events.find(e=>e.type==='reading');
+ assert.ok(read);assert.equal(read.uid,'04AABBCC');assert.match(read.cardType,/MIFARE Classic 1K/);
+ assert.equal(m.bridge.reads,0);assert.equal(m.bridge.writes,0);
+ m.bridge.remove();assert.equal(m.manager.armWrite({kind:'text',value:'test'}).ok,true);
+ m.bridge.insert();await wait();
+ const failure=m.events.find(e=>e.type==='write-result');
+ assert.equal(failure.ok,false);assert.match(failure.message,/Autenticazione|MAD|NDEF/);
+ assert.equal(m.bridge.reads,0);assert.equal(m.bridge.writes,0);
+ m.manager.shutdown();
+});
+test('Missing ATR stops writes instead of blindly treating any card as Type 2',async()=>{
+ const m=fixture();m.bridge.atr='';await m.manager.init();
+ assert.equal(m.manager.armWrite({kind:'text',value:'test'}).ok,true);
+ m.bridge.insert();await wait();
+ assert.equal(m.events.find(e=>e.type==='write-result')?.ok,false);
+ assert.equal(m.bridge.writes,0);m.manager.shutdown();
+});
+test('Type 2 reader refusal 6300 is presented as a diagnostic, with zero writes',async()=>{
+ const m=fixture();await m.manager.init();m.bridge.transmit=async(_name,_token,bytes)=>{
+   if(bytes[1]===0xCA)return Buffer.from([4,0x11,0x22,0x33,0x90,0]);
+   if(bytes[1]===0xB0)return Buffer.from([0x63,0x00]);
+   throw new Error('Should not try writes after a failed CC read');
+ };
+ assert.equal(m.manager.armWrite({kind:'text',value:'test'}).ok,true);
+ m.bridge.insert();await wait();
+ const failure=m.events.find(e=>e.type==='write-result');
+ assert.equal(failure.ok,false);assert.match(failure.message,/6300/);
+ assert.match(failure.message,/6300/);
  m.manager.shutdown();
 });

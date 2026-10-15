@@ -58,7 +58,7 @@ jobs:
       - name: Verifica il file finale
         shell: pwsh
         run: |
-          $file = 'electron/dist/NFC-Reader-Portable-1.8.0-x64.exe'
+          $file = 'electron/dist/NFC-Reader-Portable-1.8.3-x64.exe'
           if (!(Test-Path $file)) { throw "EXE portable non trovato: $file" }
           $size = (Get-Item $file).Length
           if ($size -lt 10MB) { throw 'EXE sospettosamente piccolo' }
@@ -68,6 +68,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NFC-Reader-Portable-Windows-x64
-          path: electron/dist/NFC-Reader-Portable-1.8.0-x64.exe
+          path: electron/dist/NFC-Reader-Portable-1.8.3-x64.exe
           if-no-files-found: error
           retention-days: 30

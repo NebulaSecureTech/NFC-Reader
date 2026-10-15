@@ -128,6 +128,9 @@ export function shareTagText(entry) {
   const lines = ['NFC Reader · Dettaglio tag', `UID: ${entry.uid || 'Non disponibile'}`,
     `Data e ora: ${formattedTimestamp(entry.timestamp) || 'Non disponibile'}`,
     `Contenuto: ${entry.content || 'Nessuno'}`];
+  if (entry.cardType) lines.push(`Tipo tag: ${entry.cardType}`);
+  if (entry.atr) lines.push(`ATR PC/SC: ${entry.atr}`);
+  if (entry.ndefInfo) lines.push(`Informazioni NDEF: ${entry.ndefInfo}`);
   if (Array.isArray(entry.records)) {
     lines.push(`Record NDEF: ${entry.records.length}`);
     lines.push(`Dati NDEF: ${entry.ndefBytes ?? 0} byte`);
@@ -206,8 +209,12 @@ export function restoreEntries(raw) {
       const records = Array.isArray(item.records)
         ? item.records.slice(0, MAX_RECORDS).map(record => safeSavedRecord(record)).filter(Boolean) : undefined;
       const ndefBytes = Number.isSafeInteger(item.ndefBytes) ? Math.max(0, Math.min(131072, item.ndefBytes)) : 0;
+      const pcsc = {};
+      for (const field of ['reader','cardType','atr','ndefInfo']) {
+        if (typeof item[field] === 'string') pcsc[field] = item[field].slice(0,field==='ndefInfo'?650:180);
+      }
       return {id, uid, content, key, timestamp: item.timestamp,
-        ...(records === undefined ? {} : {records, ndefBytes})};
+        ...(records === undefined ? {} : {records, ndefBytes}),...pcsc};
     });
 }
 

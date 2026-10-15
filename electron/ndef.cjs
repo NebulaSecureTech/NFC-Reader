@@ -59,6 +59,8 @@ function parseMessage(bytes) {
   while (at < bytes.length) {
     if (records.length >= 64) throw new Error('Troppi record NDEF.');
     const header = bytes[at++];
+    if (records.length===0 && (header & 0x80)===0) throw new Error('Primo record NDEF senza marcatore MB.');
+    if (records.length>0 && (header & 0x80)!==0) throw new Error('Marcatore MB ripetuto in NDEF.');
     if ((header & 0x20) !== 0) throw new Error('Record NDEF suddiviso in chunk non supportato.');
     if (at + 2 > bytes.length) throw new Error('Record NDEF incompleto.');
     const typeLength = bytes[at++];
@@ -92,7 +94,11 @@ function parseMessage(bytes) {
       record.recordType=tnf === 1 ? 'well-known' : tnf===4 ? 'external' : 'unknown';
     }
     records.push(record);
-    if (header & 0x40) break; // ME
+    if (header & 0x40) {
+      if(at!==bytes.length)throw new Error('Dati extra dopo il record finale NDEF.');
+      break; // ME
+    }
+    if(at===bytes.length)throw new Error('Messaggio NDEF senza record finale (ME).');
   }
   return records;
 }
@@ -101,6 +107,18 @@ function readCapability(bytes) {
   const capacity = bytes[2]*8;
   if (!capacity || capacity > 888) return null; // bounded NTAG/Ultralight profile only
   return {capacity, readOnly: (bytes[3]&0x0F)!==0, readProtected: (bytes[3]&0xF0)!==0, cc: Array.from(bytes.subarray(0,4))};
+}
+// Some PC/SC/ACR122 firmware combinations accept a four-page (16-byte) READ
+// even if the 4-byte CC request fails. Both probes are read-only; do not use
+// this as evidence that an unidentified card is safe to program.
+async function readCapabilityPage(reader) {
+  try { return Buffer.from(await reader.read(3,4)); }
+  catch(err) {
+    if (!/\b6300\b/.test(err?.message || '')) throw err;
+    const block=Buffer.from(await reader.read(3,16));
+    if (block.length < 4) throw new Error('Risposta CC incompleta dal lettore.');
+    return block.subarray(0,4);
+  }
 }
 async function readMemory(reader, capacity) {
   const result = Buffer.alloc(capacity);
@@ -113,7 +131,7 @@ async function readMemory(reader, capacity) {
   return result;
 }
 async function readTag(reader) {
-  const cc = readCapability(Buffer.from(await reader.read(3,4,4,16)));
+  const cc = readCapability(await readCapabilityPage(reader));
   if (!cc || cc.readProtected) return {supported:false, records:[], reason:'Tag non riconosciuto come NDEF Type 2 leggibile.'};
   const bytes = await readMemory(reader,cc.capacity);
   const raw = extractTlv(bytes);
@@ -122,7 +140,7 @@ async function readTag(reader) {
 }
 async function writeTag(reader, request) {
   const message = encodeMessage(request);
-  const cc = readCapability(Buffer.from(await reader.read(3,4,4,16)));
+  const cc = readCapability(await readCapabilityPage(reader));
   if (!cc) throw new Error('Scrittura rifiutata: tag non riconosciuto come NDEF Type 2 (es. NTAG21x).');
   if (cc.readOnly || cc.readProtected) throw new Error('Tag protetto o di sola lettura.');
   const old = await readMemory(reader,cc.capacity);
@@ -146,6 +164,18 @@ async function writeTag(reader, request) {
     Buffer.from(data).copy(verify,off,0,count);
   }
   if (!padded.equals(verify)) throw new Error('Verifica post-scrittura non riuscita. Non rimuovere il tag finché non è completata.');
-  return {bytes:record.length,capacity:cc.capacity,kind:request.kind};
+  // A matching block image is insufficient: verify that a reader can decode
+  // the completed NDEF message as the requested text or URL.
+  const reread=await readTag(reader);
+  assertVerifiedNdef(reread.records,request);
+  return {bytes:record.length,capacity:cc.capacity,kind:request.kind,verifiedRecords:reread.records};
 }
-module.exports={assertWriteRequest,encodeMessage,tlv,extractTlv,parseMessage,readCapability,readTag,writeTag};
+function assertVerifiedNdef(records,request) {
+  const expected=assertWriteRequest(request);
+  if(!Array.isArray(records)||records.length!==1 || records[0].recordType!==expected.kind ||
+    Buffer.from(records[0].data||[]).toString('utf8')!==expected.value){
+    throw new Error('Verifica NDEF fallita: la lettura dopo la scrittura non restituisce il contenuto richiesto. Non considerare la scrittura completata.');
+  }
+  return true;
+}
+module.exports={assertWriteRequest,assertVerifiedNdef,encodeMessage,tlv,extractTlv,parseMessage,readCapability,readTag,writeTag};

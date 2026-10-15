@@ -54,4 +54,32 @@ function type2Adapter(card, readerName) {
     },
   };
 }
-module.exports={checkResponse,send,isSupportedWriter,readUid,type2Adapter};
+// MIFARE Classic 1K: public-key authentication for EXISTING NFC Forum NDEF sectors.
+function classic1kAdapter(card,readerName) {
+  const requireWriter=()=>{if(!isSupportedWriter(readerName))throw new Error('MIFARE Classic: serve ACS ACR122U.');};
+  const range=(block)=>{if(!Number.isInteger(block)||block<0||block>63)throw new Error('Blocco MIFARE Classic fuori intervallo.');};
+  return {
+    async authenticate(block,keyHex,keyType) {
+      requireWriter();range(block);
+      if(!['A','B'].includes(keyType) || !/^[A-F0-9]{12}$/.test(keyHex))throw new Error('Chiave MIFARE non valida.');
+      // Volatile reader key slot 0. No persistent secret storage.
+      await send(card,[0xFF,0x82,0,0,6,...Buffer.from(keyHex,'hex')],'Caricamento chiave Classic');
+      await send(card,[0xFF,0x86,0,0,5,1,0,block,keyType==='A'?0x60:0x61,0],'Autenticazione settore Classic');
+    },
+    async readBlock(block) {
+      requireWriter();range(block);
+      if(block===0)throw new Error('Lettura del blocco produttore non necessaria.');
+      const result=await send(card,[0xFF,0xB0,0,block,16],'Lettura blocco Classic');
+      if(result.length!==16)throw new Error('Risposta Classic di lunghezza errata.');
+      return result;
+    },
+    async writeBlock(block,bytes) {
+      requireWriter();range(block);
+      if(block<4 || block%4===3)throw new Error('Vietata scrittura MIFARE a MAD, produttore o trailer di settore.');
+      const data=Buffer.from(bytes);
+      if(data.length!==16)throw new Error('Blocco Classic deve contenere 16 byte.');
+      await send(card,[0xFF,0xD6,0,block,16,...data],'Scrittura blocco Classic');
+    },
+  };
+}
+module.exports={checkResponse,send,isSupportedWriter,readUid,type2Adapter,classic1kAdapter};

@@ -89,13 +89,21 @@ internal static class Program {
             return raw.Split(new char[] { '\0' }, StringSplitOptions.RemoveEmptyEntries);
         } finally { Marshal.FreeHGlobal(memory); }
     }
-    private static bool IsPresent(string reader) {
+    private static bool IsPresent(string reader, out string atrHex) {
+        atrHex = "";
         WinScard.ReaderState state = new WinScard.ReaderState();
         state.Reader = reader;
         state.Atr = new byte[36];
         WinScard.ReaderState[] states = new WinScard.ReaderState[] { state };
         Check(WinScard.SCardGetStatusChange(Context, 0, states, 1), "Stato lettore");
-        return (states[0].EventState & WinScard.StatePresent) != 0;
+        bool present = (states[0].EventState & WinScard.StatePresent) != 0;
+        if (present && states[0].Atr != null && states[0].AtrLength > 0 &&
+            states[0].AtrLength <= (uint)states[0].Atr.Length) {
+            byte[] atr = new byte[checked((int)states[0].AtrLength)];
+            Buffer.BlockCopy(states[0].Atr, 0, atr, 0, atr.Length);
+            atrHex = Hex(atr);
+        }
+        return present;
     }
     private static void Disconnect(Slot slot) {
         if (slot.Card == IntPtr.Zero) return;
@@ -127,7 +135,8 @@ internal static class Program {
                     foreach (string name in found) {
                         Slot slot = Slots[name];
                         bool present;
-                        try { present = IsPresent(name); }
+                        string atrHex = "";
+                        try { present = IsPresent(name, out atrHex); }
                         catch (Exception ex) {
                             Disconnect(slot);
                             if (slot.LastError != ex.Message) {
@@ -151,7 +160,7 @@ internal static class Program {
                         slot.Card = card;
                         slot.Protocol = protocol;
                         slot.Token = ++NextToken;
-                        Send("PRESENT\t" + B64(name) + "\t" + slot.Token.ToString());
+                        Send("PRESENT\t" + B64(name) + "\t" + slot.Token.ToString() + "\t" + atrHex);
                     }
                     LastScanError = "";
                 }
@@ -173,9 +182,16 @@ internal static class Program {
         if (hex.Length < 10 || hex.Length > 520 || (hex.Length & 1) != 0) throw new InvalidOperationException("Lunghezza comando APDU non valida.");
         byte[] result = new byte[hex.Length / 2];
         for (int i = 0; i < result.Length; i++) result[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
-        // Only UID, Type 2 read and write APDU used by NFC Reader.
-        if (result[0] != 0xFF || (result[1] != 0xCA && result[1] != 0xB0 && result[1] != 0xD6))
+        // Only whitelisted UID, memory read/write and volatile MIFARE Classic authentication APDUs.
+        if (result[0] != 0xFF || (result[1] != 0xCA && result[1] != 0xB0 && result[1] != 0xD6 && result[1] != 0x82 && result[1] != 0x86))
             throw new InvalidOperationException("Comando APDU non autorizzato.");
+        // Reject malformed or unexpected commands at the C# boundary as well.
+        if (result[1] == 0x82 && !(result.Length == 11 && result[2] == 0 && result[3] == 0 && result[4] == 6))
+            throw new InvalidOperationException("FF82 chiave PC/SC non valida.");
+        if (result[1] == 0x86 && !(result.Length == 10 && result[2] == 0 && result[3] == 0 && result[4] == 5 && result[5] == 1 && result[6] == 0 && (result[8] == 0x60 || result[8] == 0x61) && result[9] == 0))
+            throw new InvalidOperationException("FF86 autenticazione PC/SC non valida.");
+        if (result[1] == 0xD6 && !(result.Length == result[4] + 5 && (result[4] == 4 || result[4] == 16)))
+            throw new InvalidOperationException("FF D6 lunghezza blocco non valida.");
         return result;
     }
     private static byte[] Transmit(string reader, long token, byte[] command) {

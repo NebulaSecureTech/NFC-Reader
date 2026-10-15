@@ -634,3 +634,10 @@ textarea:focus-visible {outline:3px solid var(--primary);outline-offset:1px;}
 }
 .writer-unavailable {display:flex;gap:8px;padding:9px 11px;border-radius:12px;font-size:11px;line-height:1.45;color:var(--muted);background:var(--surface-soft);}
 .writer-unavailable .icon {flex-shrink:0;}
+
+/* Desktop portable 1.8.3: stable reader panel, no incidental scrollbars. */
+@media (min-width: 1024px) {
+  .reader-panel { overflow: hidden; }
+  .scan-stage { min-height: 0; }
+  .reader-bottom { min-height: 0; }
+}

@@ -10,10 +10,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="NFC Reader">
   <title>NFC Reader</title>
-  <link rel="icon" href="./assets/icons/favicon.svg?v=1.8.0" type="image/svg+xml">
+  <link rel="icon" href="./assets/icons/favicon.svg?v=1.8.3" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="manifest" href="./manifest.webmanifest?v=1.8.0">
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.8.0">
+  <link rel="manifest" href="./manifest.webmanifest?v=1.8.3">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.8.3">
   <script>
     try {
       const settings = JSON.parse(localStorage.getItem('nfc-reader.settings.v1') || '{}');
@@ -74,7 +74,7 @@
       <main class="app-main">
         <div class="desktop-intro"><div><span class="eyebrow">PANNELLO NFC</span><h1>Lettura, scrittura e storico</h1><p>Gestisci i tag sul telefono o con un lettore USB collegato al PC.</p></div><div class="desktop-tool-choice" role="group" aria-label="Attività NFC"><button type="button" :class="{selected: tab !== 'writer'}" @click="setTab('reader')"><svg class="icon tiny"><use href="#ico-scan"/></svg>Leggi</button><button type="button" :class="{selected: tab === 'writer'}" @click="setTab('writer')"><svg class="icon tiny"><use href="#ico-pencil"/></svg>Scrivi</button></div><div class="desktop-intro-summary"><span class="summary-icon"><svg class="icon"><use href="#ico-database"/></svg></span><span><strong>{{ entries.length }}</strong><small>{{ entries.length === 1 ? 'tag salvato' : 'tag salvati' }} in questo browser</small></span></div></div>
         <section id="panel-reader" v-show="tab === 'reader' || (desktopLayout && tab !== 'writer')" :role="desktopLayout ? 'region' : 'tabpanel'" :aria-label="desktopLayout ? 'Lettore NFC' : null" :aria-labelledby="desktopLayout ? null : 'tab-reader'" tabindex="-1" class="reader-panel" :class="[running ? 'is-running' : '', flash ? 'flash-' + flash : '']">
-          <div class="panel-heading"><span class="eyebrow">{{ singleMode ? 'LETTURA SINGOLA' : 'SCANSIONE CONTINUA' }}</span><span class="status-chip" :class="{active: running, starting: scanState === 'starting'}"><span class="status-dot"></span>{{ statusLabel }}</span></div>
+          <div class="panel-heading"><span class="eyebrow">{{ multiRead ? 'LETTURA MULTIPLA' : 'LETTURA NFC' }}</span><span class="status-chip" :class="{active: running, starting: scanState === 'starting'}"><span class="status-dot"></span>{{ statusLabel }}</span></div>
 
           <div class="scan-stage">
             <div class="scanner" :class="{'scanner-active': running}" aria-hidden="true">
@@ -113,7 +113,7 @@
             <textarea v-if="writeKind === 'text'" id="write-value" class="writer-input writer-textarea" v-model="writeValue" :disabled="writeState === 'waiting'" @input="resetWriteApproval" maxlength="500" rows="4" placeholder="Inserisci il testo da memorizzare sul tag..."></textarea>
             <input v-else id="write-value" type="url" class="writer-input" v-model="writeValue" :disabled="writeState === 'waiting'" @input="resetWriteApproval" maxlength="500" placeholder="https://esempio.it" inputmode="url" autocapitalize="none" autocomplete="off" spellcheck="false">
             <div class="writer-byte-info"><span>UTF-8 · {{ writeBytes }} byte di contenuto</span><span>{{ writeValue.length }} / 500</span></div>
-            <div class="writer-warning"><svg class="icon small"><use href="#ico-info"/></svg><p><strong>Attenzione: la scrittura sovrascrive i dati NDEF esistenti.</strong> Usa solo tag tuoi e compatibili, non badge aziendali o carte di accesso. La capienza varia per tag.</p></div>
+            <div class="writer-warning"><svg class="icon small"><use href="#ico-info"/></svg><p><strong>Attenzione: la scrittura sovrascrive i dati NDEF esistenti.</strong> Usa solo tag tuoi e compatibili, mai badge aziendali o carte di accesso. Su Classic 1K serve una precedente formattazione NDEF e i permessi di scrittura. La capienza varia per tag.</p></div>
             <label class="writer-consent"><input type="checkbox" v-model="writeConfirmed" :disabled="writeState === 'waiting'"><span>Confermo di voler sostituire il contenuto del tag.</span></label>
             <div v-if="isDesktop" class="writer-device"><svg class="icon small"><use href="#ico-usb"/></svg>{{ connectedReaderLabel }}</div>
             <div v-else-if="!webWriteSupported" class="writer-unavailable"><svg class="icon small"><use href="#ico-info"/></svg>Scrittura Web NFC disponibile su Chrome Android compatibile. Sul PC usa la versione Electron con lettore USB.</div>
@@ -170,7 +170,7 @@
           <div class="segmented settings-tabs" role="group" aria-label="Sezioni impostazioni"><button type="button" :aria-pressed="settingsTab === 'reading'" :class="{selected: settingsTab === 'reading'}" @click="settingsTab = 'reading'">Lettura</button><button type="button" :aria-pressed="settingsTab === 'app'" :class="{selected: settingsTab === 'app'}" @click="settingsTab = 'app'">App</button></div>
           <div class="dialog-content settings-content">
             <div v-if="settingsTab === 'reading'" class="settings-reading">
-              <label class="setting-row mode-setting"><span class="setting-icon"><svg class="icon"><use href="#ico-scan"/></svg></span><span><strong>Lettura singola</strong><small>{{ running ? 'Ferma la scansione per cambiare modalità' : 'Una lettura, stop e scheda dettagli automatica' }}</small></span><input type="checkbox" role="switch" class="switch" v-model="singleMode" :disabled="running" @change="onScanModeChange" aria-label="Lettura singola"></label>
+              <label class="setting-row mode-setting"><span class="setting-icon"><svg class="icon"><use href="#ico-scan"/></svg></span><span><strong>Lettura multipla</strong><small>{{ running ? 'Ferma la scansione per cambiare modalità' : 'Se disattivata, legge un tag e apre subito i dettagli' }}</small></span><input type="checkbox" role="switch" class="switch" v-model="multiRead" :disabled="running" @change="onScanModeChange" aria-label="Lettura multipla"></label>
               <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-volume"/></svg></span><span><strong>Suono di lettura</strong><small>Conferma un nuovo tag salvato</small></span><input type="checkbox" role="switch" class="switch" v-model="soundEnabled" @change="onSettingsChange" aria-label="Suono di lettura"></label>
               <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-duplicate"/></svg></span><span><strong>Suoni di avviso</strong><small>Segnali distinti per doppioni ed errori</small></span><input type="checkbox" role="switch" class="switch" v-model="alertSoundEnabled" @change="onSettingsChange" aria-label="Suoni di avviso"></label>
               <div class="sound-controls"><label class="volume-label" for="volume">Volume <span>{{ volume }}%</span></label><input id="volume" type="range" min="0" max="100" step="5" v-model.number="volume" @change="onSettingsChange" aria-label="Volume dei suoni"><div class="sound-tests" role="group" aria-label="Prova i suoni"><button type="button" @click="testSound('success')" aria-label="Prova suono lettura"><svg class="icon tiny"><use href="#ico-check"/></svg>Lettura</button><button type="button" @click="testSound('duplicate')" aria-label="Prova suono doppione"><svg class="icon tiny"><use href="#ico-duplicate"/></svg>Doppione</button><button type="button" @click="testSound('error')" aria-label="Prova suono errore"><svg class="icon tiny"><use href="#ico-info"/></svg>Errore</button></div></div>
@@ -182,7 +182,7 @@
               <h3 class="section-label">ASPETTO</h3><div class="segmented theme-options" role="group" aria-label="Tema dell'app"><button type="button" :class="{selected: theme === 'auto'}" :aria-pressed="theme === 'auto'" @click="setTheme('auto')">Sistema</button><button type="button" :class="{selected: theme === 'light'}" :aria-pressed="theme === 'light'" @click="setTheme('light')">Chiaro</button><button type="button" :class="{selected: theme === 'dark'}" :aria-pressed="theme === 'dark'" @click="setTheme('dark')">Scuro</button></div>
               <div class="app-info-card"><svg class="icon"><use href="#ico-install"/></svg><div><strong>{{ installed ? 'App installata' : 'Aggiungi alla schermata Home' }}</strong><p v-if="!installed">{{ installPrompt ? 'Aprila come un’app, senza la barra del browser.' : 'Dal menu di Chrome scegli Installa app o Aggiungi a schermata Home.' }}</p><p v-else>Pronta dalla schermata Home.</p><button v-if="installPrompt && !installed" type="button" class="btn btn-small btn-secondary" @click="installApp">Installa app</button></div></div>
               <div class="app-info-card"><svg class="icon"><use href="#ico-shield"/></svg><div><strong>I tag restano qui</strong><p>Nessun account o invio a servizi esterni. Esporta lo storico prima di cancellare i dati del browser.</p><small>{{ offlineReady ? 'Interfaccia disponibile anche offline.' : offlineFailed ? 'Cache offline non disponibile: riprova online.' : 'Preparazione della cache offline...' }}</small></div></div>
-              <div class="compatibility-note"><strong>{{ isDesktop ? 'Electron · lettore USB PC/SC' : 'Chrome su Android · NFC · HTTPS' }}</strong><p>{{ isDesktop ? 'Su PC la lettura UID richiede un lettore PC/SC. La lettura e scrittura NDEF Type 2 dipendono da modello, tag e driver. Non sono supportati genericamente badge protetti o carte Classic/DESFire.' : 'Tag compatibili NDEF, app visibile e schermo sbloccato. UID non sempre disponibile. Senza UID i doppioni sono confrontati per contenuto NDEF.' }}</p><p>I contatori Doppioni ed Errori si riferiscono all'apertura corrente dell'app.</p></div>
+              <div class="compatibility-note"><strong>{{ isDesktop ? 'Electron · lettore USB PC/SC' : 'Chrome su Android · NFC · HTTPS' }}</strong><p>{{ isDesktop ? 'Su PC occorre un lettore PC/SC. Scrittura NDEF: tag Type 2 compatibili oppure MIFARE Classic 1K già formattate NDEF (MAD valido e chiavi autorizzate). Nessuna scrittura su badge protetti o DESFire.' : 'Tag compatibili NDEF, app visibile e schermo sbloccato. UID non sempre disponibile. Senza UID i doppioni sono confrontati per contenuto NDEF.' }}</p><p>I contatori Doppioni ed Errori si riferiscono all'apertura corrente dell'app.</p></div>
               <button v-if="updateAvailable" type="button" class="btn btn-secondary full-width" @click="applyUpdate"><svg class="icon small"><use href="#ico-refresh"/></svg>Aggiorna app</button>
             </div>
           </div>
@@ -219,6 +219,11 @@
               <div><span>Record NDEF</span><strong>{{ Array.isArray(detail.records) ? detail.records.length : '—' }}</strong></div>
               <div><span>Payload NDEF</span><strong>{{ Array.isArray(detail.records) ? (detail.ndefBytes || 0) + ' byte' : '—' }}</strong></div>
             </div>
+            <section v-if="detail.cardType" class="detail-section">
+              <h3>Tipo di tag (PC/SC)</h3>
+              <p class="ndef-content">{{ detail.cardType }}</p>
+              <p v-if="detail.ndefInfo" class="detail-disclaimer">{{ detail.ndefInfo }}</p>
+            </section>
             <section class="detail-section">
               <h3>Contenuto leggibile</h3>
               <p class="ndef-content">{{ detail.content || 'Nessun contenuto testuale riconosciuto.' }}</p>
@@ -229,6 +234,8 @@
                 <span class="accordion-trailing"><span class="detail-count">{{ Array.isArray(detail.records) ? detail.records.length : '—' }}</span><svg class="icon small accordion-chevron"><use href="#ico-chevron"/></svg></span>
               </summary>
               <div class="records-accordion-body">
+                <div v-if="detail.atr" class="record-hex"><strong>ATR PC/SC (identificazione tag)</strong><pre>{{ detail.atr.match(/.{1,2}/g)?.join(' ') }}</pre></div>
+                <div v-if="detail.reader" class="record-empty">Lettore: {{ detail.reader }}</div>
                 <template v-if="Array.isArray(detail.records)">
                 <p v-if="!detail.records.length" class="record-empty">Il tag non contiene record NDEF.</p>
                 <article v-for="(record, index) in detail.records" :key="index" class="ndef-record">
@@ -268,7 +275,7 @@
     <div v-if="toast && !modal" class="snackbar" :class="'toast-' + toast.tone" role="status" aria-live="polite"><svg class="icon small"><use :href="iconFor(toast.tone)"/></svg><span>{{ toast.text }}</span></div>
   </div>
   <noscript><p>Abilita JavaScript per usare NFC Reader.</p></noscript>
-  <script src="./assets/vendor/vue.global.js?v=1.8.0"></script>
-  <script type="module" src="./assets/js/app.mjs?v=1.8.0"></script>
+  <script src="./assets/vendor/vue.global.js?v=1.8.3"></script>
+  <script type="module" src="./assets/js/app.mjs?v=1.8.3"></script>
 </body>
 </html>
