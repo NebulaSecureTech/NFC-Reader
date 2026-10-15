@@ -2,7 +2,7 @@
   "id": "./",
   "name": "NFC Reader",
   "short_name": "NFC Reader",
-  "description": "Scansione NFC continua, storico locale ed esportazione CSV e TXT.",
+  "description": "Scansione NFC singola o continua, dettagli NDEF, condivisione e storico locale.",
   "lang": "it-IT",
   "dir": "ltr",
   "start_url": "./",

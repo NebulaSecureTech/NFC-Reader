@@ -2,6 +2,10 @@
 export const MAX_ENTRIES = 5000;
 export const REPEAT_DELAY_MS = 1000;
 const MAX_IDENTITY_BYTES = 65536;
+// Web NFC exposes NDEF payloads, not low-level chip memory. Keep the local archive bounded.
+const MAX_RECORDS = 64;
+const MAX_DETAIL_BYTES = 65536;
+const MAX_SAVED_TEXT = 16384;
 
 export function normalizeUid(uid) {
   if (typeof uid !== 'string') return '';
@@ -58,13 +62,87 @@ function ndefIdentity(records) {
   return hasPayload ? `ndef:${JSON.stringify(parts)}` : '';
 }
 
+function recordDetails(record, state, depth = 0) {
+  state.records++;
+  if (state.records > MAX_RECORDS) throw new RangeError('Troppi record NDEF (massimo 64).');
+  const bytes = bytesOf(record?.data);
+  state.bytes += bytes.byteLength;
+  if (depth === 0) state.topBytes += bytes.byteLength;
+  if (state.bytes > MAX_DETAIL_BYTES) throw new RangeError('Dati NDEF troppo grandi (oltre 64 KB).');
+  const recordType = String(record?.recordType ?? 'unknown').slice(0, 128);
+  const mediaType = String(record?.mediaType ?? '').slice(0, 256);
+  const encoding = String(record?.encoding ?? '').slice(0, 60);
+  const lang = String(record?.lang ?? '').slice(0, 50);
+  const id = String(record?.id ?? '').slice(0, 256);
+  const type = recordType.toLowerCase();
+  let decoded = '';
+  if (type === 'text' || type === 'url' || type === 'absolute-url' || (type === 'mime' && /^text\//i.test(mediaType))) {
+    try {
+      decoded = new TextDecoder(type === 'text' && /^utf-16/i.test(encoding) ? 'utf-16' : 'utf-8')
+        .decode(bytes).replace(/\0/g, '').slice(0, MAX_SAVED_TEXT);
+    } catch (_) { /* Retain HEX even if decoding fails. */ }
+  }
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  const output = {recordType, mediaType, id, encoding, lang, bytes: bytes.byteLength, decoded, hex};
+  if (depth < 2 && typeof record?.toRecords === 'function') {
+    try {
+      const nested = Array.from(record.toRecords() ?? []);
+      if (nested.length) output.children = nested.map(child => recordDetails(child, state, depth + 1));
+    } catch (_) { /* Not all NDEF types allow toRecords(). */ }
+  }
+  return output;
+}
+
+// Raw payloads are held as HEX so a detail view remains usable after a reload.
 export function parseNfcReading(event, now = new Date()) {
   const uid = normalizeUid(event?.serialNumber);
-  const records = Array.from(event?.message?.records ?? []);
-  const content = describeNdefMessage({records});
-  const key = uid ? `uid:${uid}` : ndefIdentity(records);
+  const sourceRecords = Array.from(event?.message?.records ?? []);
+  if (sourceRecords.length > MAX_RECORDS) throw new RangeError('Troppi record NDEF (massimo 64).');
+  const content = describeNdefMessage({records: sourceRecords});
+  const key = uid ? `uid:${uid}` : ndefIdentity(sourceRecords);
   if (!key) return null;
-  return {uid, content, key, timestamp: now.toISOString()};
+  const state = {records: 0, bytes: 0, topBytes: 0};
+  const records = sourceRecords.map(record => recordDetails(record, state));
+  return {uid, content, key, timestamp: now.toISOString(), records, ndefBytes: state.topBytes};
+}
+
+function safeSavedRecord(item, depth = 0) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  const bounded = (value, limit) => typeof value === 'string' ? value.slice(0, limit) : '';
+  const hex = bounded(item.hex, MAX_DETAIL_BYTES * 2);
+  const children = depth < 2 && Array.isArray(item.children)
+    ? item.children.slice(0, MAX_RECORDS).map(child => safeSavedRecord(child, depth + 1)).filter(Boolean) : [];
+  return {
+    recordType: bounded(item.recordType, 128), mediaType: bounded(item.mediaType, 256),
+    id: bounded(item.id, 256), encoding: bounded(item.encoding, 60), lang: bounded(item.lang, 50),
+    bytes: Number.isSafeInteger(item.bytes) ? Math.max(0, Math.min(MAX_DETAIL_BYTES, item.bytes)) : 0,
+    decoded: bounded(item.decoded, MAX_SAVED_TEXT),
+    hex: /^[0-9A-F]*$/i.test(hex) && hex.length % 2 === 0 ? hex.toUpperCase() : '',
+    ...(children.length ? {children} : {}),
+  };
+}
+
+// A compact, human-readable summary suited to the Android share sheet.
+// Large binary payloads remain available in the in-app detail instead.
+export function shareTagText(entry) {
+  const lines = ['NFC Reader · Dettaglio tag', `UID: ${entry.uid || 'Non disponibile'}`,
+    `Data e ora: ${formattedTimestamp(entry.timestamp) || 'Non disponibile'}`,
+    `Contenuto: ${entry.content || 'Nessuno'}`];
+  if (Array.isArray(entry.records)) {
+    lines.push(`Record NDEF: ${entry.records.length}`);
+    lines.push(`Dati NDEF: ${entry.ndefBytes ?? 0} byte`);
+    entry.records.forEach((record, i) => {
+      lines.push('', `Record ${i + 1}: ${record.recordType || 'unknown'}`);
+      if (record.mediaType) lines.push(`MIME: ${record.mediaType}`);
+      if (record.id) lines.push(`ID record: ${record.id}`);
+      if (record.lang) lines.push(`Lingua: ${record.lang}`);
+      if (record.encoding) lines.push(`Codifica: ${record.encoding}`);
+      if (record.decoded) lines.push(`Testo: ${record.decoded.slice(0, 2048)}`);
+      else if (record.hex) lines.push(`HEX: ${record.hex.slice(0, 512)}${record.hex.length > 512 ? '… (continua nel dettaglio app)' : ''}`);
+      if (record.children?.length) lines.push(`Record annidati: ${record.children.length}`);
+    });
+  } else lines.push('Dettagli NDEF non disponibili (lettura precedente alla v1.3.0).');
+  return lines.join('\n');
 }
 
 export function formattedTimestamp(iso) {
@@ -124,7 +202,12 @@ export function restoreEntries(raw) {
       // Legacy anonymous records have only a preview. Do not invent a raw identity.
       const key = uid ? `uid:${uid}` : typeof item.key === 'string' && item.key.startsWith('ndef:') && item.key.length < 150000
         ? item.key : `record:${content}`;
-      return {id, uid, content, key, timestamp: item.timestamp};
+      // Older releases did not save raw record details; preserve that distinction.
+      const records = Array.isArray(item.records)
+        ? item.records.slice(0, MAX_RECORDS).map(record => safeSavedRecord(record)).filter(Boolean) : undefined;
+      const ndefBytes = Number.isSafeInteger(item.ndefBytes) ? Math.max(0, Math.min(131072, item.ndefBytes)) : 0;
+      return {id, uid, content, key, timestamp: item.timestamp,
+        ...(records === undefined ? {} : {records, ndefBytes})};
     });
 }
 

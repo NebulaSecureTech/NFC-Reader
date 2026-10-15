@@ -1,5 +1,5 @@
 /* Atomic app shell, scoped cache, opt-in activation of updates. */
-const VERSION = '1.2.0';
+const VERSION = '1.4.0';
 const PREFIX = `nfc-reader:${self.registration.scope}:`;
 const CACHE = `${PREFIX}${VERSION}`;
 const v = file => `${file}?v=${VERSION}`;

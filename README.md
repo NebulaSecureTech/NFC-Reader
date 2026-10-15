@@ -1,126 +1,122 @@
-# NFC Reader 1.2.0
+# NFC Reader v1.4.0
 
-Web app statica Vue, mobile-first, senza account, backend, CDN o compilazione. Tutte le risorse sono incluse nel pacchetto; non ci sono font da scaricare. Interfaccia in stile Material Design.
+Web app **Vue 3, mobile-first, Material Design**, installabile come PWA e pubblicabile su GitHub Pages. Non richiede backend, account, build o servizi esterni. Tutti gli asset, comprese icone e Vue, sono in locale.
 
-## Pubblicazione e aggiornamento
+## Novita della 1.4.0
 
-Estrai lo ZIP **GitHub-Pages** e carica tutto il contenuto nella radice del repository, non dentro una nuova cartella. I file essenziali sono `index.html`, `manifest.webmanifest`, `sw.js`, `.nojekyll` e `assets/`.
+- **Condividi in alto nello Storico:** unico pulsante nell'intestazione, accanto al titolo. La vecchia barra inferiore e' stata rimossa per lasciare piu' spazio alla lista. Il pulsante **Svuota** resta separato e richiede conferma.
+- **Una modale per esportare e condividere:** scegli **CSV** o **TXT**, attiva/disattiva **Numero progressivo**, poi premi **Scarica** oppure **Condividi**. La scelta si applica all'intero storico, anche durante una ricerca.
+- **Record NDEF in accordion:** nella scheda dettaglio vengono mostrati subito UID, data/ora, contenuto leggibile e riepilogo. I **Record e dati tecnici** sono raggruppati in un accordion nativo, **chiuso per impostazione predefinita** ogni volta che apri un tag, con i record HEX disponibili all'interno.
+- Restano operative **lettura singola e continua**, suoni di conferma/doppione/errore, dettagli da Lettore e Storico, condivisione di un singolo tag, memoria locale e PWA offline.
 
-Su GitHub apri **Settings > Pages > Build and deployment**, scegli **Deploy from a branch**, il branch `main` e la cartella `/(root)`, poi salva. Tutti i percorsi sono relativi: non devi impostare il nome del repository nel codice. Se usi un dominio personalizzato, conserva l'eventuale file `CNAME` e la configurazione del tuo repository.
+## Pubblicazione su GitHub Pages
 
-Per aggiornare dalla 1.1.0:
+1. Estrai lo ZIP `NFC-Reader-PWA-GitHub-Pages-v1.4.0.zip`.
+2. Carica **il contenuto** dello ZIP nella radice del repository GitHub: `index.html`, `assets/`, `.nojekyll`, `manifest.webmanifest`, `sw.js` e i documenti.
+3. In **Settings > Pages > Build and deployment** scegli **Deploy from a branch**, `main`, `/(root)` e salva.
+4. Apri l'indirizzo HTTPS del sito con **Chrome su Android**, NFC attivo.
+5. Facoltativo: dal menu del browser scegli **Installa app** / **Aggiungi alla schermata Home**.
 
-1. Esporta una copia delle letture prima di sostituire i file.
-2. Sostituisci **l'intero pacchetto**, non soltanto `index.html`.
-3. Riapri il sito online. Se appare **Aggiorna**, ferma la scansione e premi il comando. In alternativa chiudi tutte le schede del sito e la PWA, poi riaprila.
-4. Nelle impostazioni verifica che il numero di versione sia **1.2.0**.
+Percorsi relativi: non serve modificare il nome del repository. Non serve `npm install` o `npm run build`.
 
-Non cancellare i dati del sito per forzare l'aggiornamento: contengono lo storico. Le chiavi di archivio e preferenze sono compatibili con le versioni precedenti. La conservazione richiede lo stesso browser/profilo e la stessa origine (protocollo, dominio e porta); cambiando dominio i dati non si trasferiscono automaticamente. Le vecchie letture anonime prive di UID non contengono l'identità NDEF completa e possono essere riconosciute come nuove alla prima rilettura dopo l'aggiornamento.
+### Aggiornamento dalla v1.2.0 o v1.3.0
 
-## Due schermate, niente scorrimento della pagina
+1. **Esporta lo storico** prima dell'aggiornamento.
+2. Sostituisci **tutti** i file del sito con quelli della v1.4.0. Conserva l'eventuale `CNAME` del repository.
+3. Apri il sito online; se compare l'avviso di aggiornamento, ferma NFC e premi **Aggiorna**. Verifica nelle impostazioni il numero **v1.4.0**.
+4. Non eliminare i dati del sito per aggiornare: eliminerebbe lo storico. Mantieni la stessa origine HTTPS e lo stesso profilo/browser: passando a un altro dominio lo storico locale non segue automaticamente.
 
-**Lettore** contiene stato NFC, indicatore di scansione, totale dei tag, contatori di doppioni/errori, ultimo esito e un solo pulsante Avvia/Ferma. Il layout segue l'altezza visibile del telefono. In orizzontale indicatore e controlli si affiancano.
+## Uso e schermate
 
-**Storico** contiene ricerca, dettaglio del tag, copia UID, eliminazione con conferma e download. Scorre soltanto l'elenco: ricerca, esportazione e navigazione restano fuori dall'area scorrevole. L'elenco carica 50 righe per volta. Cambiare tab o aprire le impostazioni non interrompe NFC. La cancellazione richiede conferma e ferma la scansione.
+**Lettore** (pagina senza scroll) mostra stato NFC, ultimo esito, contatori e Avvia/Ferma. Tocca l'ultimo tag o il contatore **Tag salvati** per aprirne il dettaglio. Il contatore apre sempre l'ultimo tag **salvato**; la scheda ultimo esito puo aprire anche un doppione **non salvato** appena letto.
 
-Il totale dei tag è persistente. Doppioni ed Errori contano gli eventi dalla corrente apertura dell'app e si azzerano anche svuotando lo storico. Ferma/Avvia non azzera questi contatori.
+**Storico** mostra ricerca e righe dei tag (toccabili). Il pulsante **Condividi**, in alto accanto al titolo, apre la modale **Esporta e condividi**. Li' scegli il formato CSV/TXT, il progressivo e se **Scaricare** o **Condividere**. Lo storico scorre in modo indipendente; non esiste piu' alcuna barra di esportazione in basso. La scansione continua non si ferma cambiando tab.
 
-## Scansione e suoni
+**Impostazioni > Lettura**: switch **Lettura singola**, suoni lettura/doppione/errore, volume, prove audio, vibrazione, filtro doppioni e richiesta di schermo acceso. Per cambiare modalita' ferma prima una scansione attiva.
 
-Premi **Avvia scansione** e concedi l'autorizzazione NFC. Avvicina un tag dopo l'altro senza riavviare la scansione. Premi **Ferma scansione** per terminare.
+**Impostazioni > App**: tema automatico/chiaro/scuro, installazione, cache e requisiti.
 
-| Evento | Segnale | Comportamento |
-| --- | --- | --- |
-| Nuova lettura salvata | Due note brevi ascendenti | Aggiunge il tag, esito verde. |
-| Doppione | Due beep uguali | Esito ambra. Con filtro attivo non aggiunge una riga; con filtro disattivato salva una nuova lettura ma mantiene il suono di doppione. |
-| Errore NFC o di salvataggio | Due note più basse discendenti | Esito rosso. Un tag non leggibile non interrompe la sessione; errori di avvio, limite archivio e salvataggio fallito la fermano. |
+### Singola o continua
 
-Gli eventi ripetuti dello stesso tag vengono ignorati finché non trascorre almeno un secondo senza un altro evento di quel tag. Questo riduce i beep ripetuti quando lo tieni appoggiato. Web NFC non fornisce un evento affidabile di rimozione: non è possibile distinguere ogni rimozione/riappoggio ravvicinato. Tag diversi in sequenza non sono bloccati da questo intervallo.
+- **Continua (default)**: un tocco su Avvia; i tag si raccolgono in sequenza fino a Ferma o alla chiusura/sospensione della pagina. I doppioni sono riconosciuti e ignorati per default, ma sono segnalati con un suono distinto.
+- **Singola**: un tocco su Avvia; il primo tag NFC valido ferma la lettura, salva se necessario e apre i dati NDEF. Chiusa la scheda, premi nuovamente Avvia per leggere un altro tag. Su doppione ignorato mostra i dati **della lettura corrente**, senza creare una seconda riga.
+- Un evento NFC non valido produce un errore, ma in modalita' singola rimane possibile avvicinare un tag leggibile. Eventi tardivi dopo Stop sono ignorati.
+- Anti-rimbalzo di 1 secondo quando lo stesso tag resta davanti al telefono. Senza UID, i doppioni vengono individuati dal payload NDEF (due tag identici possono risultare un unico tag).
 
-Il riconoscimento dei doppioni usa l'UID normalizzato, quando presente. Senza UID confronta i byte NDEF e i metadati completi, non la sola anteprima. Due tag fisici distinti con identico contenuto NDEF non sono distinguibili senza UID.
+### Dettagli tecnici: limiti reali
 
-## Impostazioni
+Nel dettaglio tag, tocca **Record e dati tecnici** per aprire l'accordion (inizialmente chiuso) con i singoli record, MIME, ID e payload HEX quando disponibili.
 
-L'ingranaggio apre un menu compatto con due sezioni.
+La Web NFC API espone **UID quando disponibile** e record **NDEF** con i relativi metadati, non il protocollo fisico del tag, la capacita' di memoria totale, la tecnologia specifica, eventuali blocchi protetti o i contenuti fuori da NDEF. Non vengono inventati valori non esposti dalla piattaforma.
 
-**Lettura:** suono di conferma, suoni di avviso, volume, pulsanti di prova per tutti e tre i segnali, vibrazione, filtro doppioni, richiesta di schermo acceso durante la scansione.
+L'app conserva i record NDEF (testo decodificato e payload HEX) in locale per poterli consultare in futuro. Limiti applicativi: 64 record e 64 KB complessivi per lettura, 5.000 letture nello Storico; la quota reale del browser puo' esaurirsi prima. Nell'anteprima della lista, il testo e' ridotto a 600 caratteri; il dettaglio conserva il payload HEX entro i limiti suddetti e il testo decodificato fino a 16.384 caratteri per record. I record binari non vengono interpretati arbitrariamente; i dati non sono eseguiti ne' gli URL aperti automaticamente.
 
-**App:** tema Sistema/Chiaro/Scuro, installazione quando proposta dal browser, stato della cache offline, requisiti e versione.
+I record inseriti prima della v1.3 non includono il payload HEX. Se ti servono quei dati, rileggi il tag. Se un tag esistente viene ignorato come doppione, usa momentaneamente la modalita' singola per visualizzarne i dati NDEF aggiornati o esporta prima lo storico e poi elimina quel tag dal registro.
 
-Le opzioni vengono memorizzate. I pulsanti di prova riproducono il segnale al volume scelto anche se il relativo interruttore è disattivato. Il volume dell'app non sostituisce quello multimediale del telefono. Audio, vibrazione e blocco dello spegnimento dipendono dalle funzioni e dalle restrizioni del dispositivo; il risparmio energetico può impedire il mantenimento dello schermo acceso. L'app segnala quando la richiesta di schermo acceso non riesce.
+## Esportazione e condivisione
 
-## Esportazioni
+- CSV: UTF-8 con BOM, separatore `;`, colonne Numero (opzionale), UID, anteprima NDEF e data/ora. Celle sensibili protette dall'interpretazione come formula nei fogli di calcolo.
+- TXT: un UID per riga (o descrizione NDEF se UID assente), con/senza progressivo.
+- **Storico > Condividi**: si apre un'unica modale. Seleziona CSV o TXT e l'eventuale progressivo; premi **Scarica** per ottenere il file o **Condividi** per il pannello nativo del telefono (file se supportato, testo per esportazioni brevi, altrimenti download dello stesso formato). Condividere e' una **azione esplicita dell'utente**.
+- **Condividi singolo tag**: testo con i dati NDEF principali. I payload HEX molto lunghi sono abbreviati nel testo condiviso; nell'app il dettaglio puo' mostrarli per intero. Senza Web Share: appunti o TXT scaricato.
 
-L'opzione **Con progressivo** nello Storico vale sia per CSV sia per TXT. Viene salvata come preferenza.
+Le esportazioni riguardano l'intero registro, anche se la ricerca filtra la lista visibile. La numerazione e' ricalcolata nel file. Condividi/Esporta non inviano dati da soli: bisogna premere il pulsante.
 
-- **CSV:** UTF-8 con BOM, separatore `;`, campi tra virgolette. Colonne Numero (opzionale), UID, Contenuto NDEF e Data e ora. Il testo che potrebbe essere interpretato come formula viene neutralizzato con un apostrofo iniziale.
-- **TXT:** un UID per riga, preceduto da `1.`, `2.`, ecc. solo se richiesto. Senza UID include l'avviso `[UID non disponibile]` e l'anteprima del contenuto.
+## Dati locali e resilienza
 
-Si esportano **tutti i tag**, anche durante una ricerca, in ordine di acquisizione. Il progressivo viene ricalcolato da 1 nell'elenco corrente. La visualizzazione nello Storico, invece, va dal più recente al più vecchio. Il contenuto testuale NDEF conservato ed esportato è un'anteprima di massimo 600 caratteri; non è un backup integrale del tag. I record binari vengono descritti per tipo. I dati del tag non sono eseguiti e gli URL non vengono aperti automaticamente.
+Le letture e le preferenze sono in `localStorage` con le **stesse chiavi delle versioni precedenti**. Non esiste backend. Se la scrittura fallisce, la scansione si ferma, il tag resta temporaneamente in memoria e compare un avviso persistente per esportare/riprovare. Non chiudere o ricaricare mentre vedi quell'avviso: potresti perdere le letture non scritte su disco.
 
-## Archivio e protezione dei dati
+L'archivio danneggiato non viene sovrascritto automaticamente. Modifiche arrivate da altre schede interrompono la scansione. Usa una sola sessione operativa e salva periodicamente un CSV/TXT. Le copie condivise possono contenere UID e altri dati del tag: scegli con attenzione i destinatari.
 
-Il limite applicativo è 5.000 letture; lo spazio disponibile può esaurirsi prima, soprattutto per tag anonimi con grandi payload. Per tag senza UID il confronto completo è limitato a 64 KB e 64 record per evento.
+## Limiti del dispositivo
 
-Se un salvataggio fallisce, il tag appena acquisito resta in memoria, la scansione si ferma, compare un avviso persistente e viene riprodotto il segnale di errore, non quello di successo. Puoi esportare lo storico o riprovare il salvataggio. **Non chiudere l'app mentre compare l'avviso di modifiche solo in memoria.** Il tentativo di avvisare alla chiusura non è una garanzia sui telefoni.
+- NFC sul web: principalmente **Chrome su Android** con NFC attivo, pagina **HTTPS** e tag **NDEF**.
+- La scansione richiede app visibile e schermo sbloccato. Con schermo spento/in background la piattaforma puo' sospendere l'accesso NFC. L'opzione Schermo acceso usa Wake Lock solo se disponibile.
+- NFC a basso livello, badge aziendali protetti, tessere MIFARE Classic non NDEF e lettori USB desktop non sono letti tramite questa API.
+- La PWA puo' caricare l'interfaccia offline dopo il primo accesso corretto, ma non estende le capacita' hardware del browser.
 
-Un archivio danneggiato non viene sovrascritto automaticamente: prima viene richiesta una copia originale scaricabile, poi puoi ripristinare le letture recuperabili. Le modifiche all'archivio provenienti da un'altra scheda fermano NFC. Usa una sola sessione operativa: questo archivio locale non è un database multiutente e non promette scritture concorrenti transazionali.
-
-L'app non invia i tag a server o servizi esterni. Il sito statico è comunque servito dal tuo hosting. Browser, dispositivo e relative copie esportate restano sotto la tua gestione. LocalStorage non è un backup: cancellazione dei dati, profili diversi, navigazione privata o perdita del dispositivo possono rendere indisponibile lo storico. Esporta periodicamente e proteggi il telefono se raccogli identificativi sensibili.
-
-## PWA e compatibilità
-
-La lettura richiede un browser con **Web NFC**, in pratica Chrome su Android con NFC attivo e sito HTTPS. I tag devono supportare NDEF. Non è un'interfaccia universale per tessere protette, protocolli NFC a basso livello, lettori USB desktop o emulazione di carte. L'UID può non essere disponibile.
-
-La pagina deve restare visibile e il telefono sbloccato. In background o con schermo spento le letture vengono sospese dal browser. L'installazione PWA non estende queste capacità.
-
-Il service worker prevede l'interfaccia offline dopo un caricamento online completo. La cache è separata per percorso di installazione e versione. HTML e asset sono versionati insieme; un aggiornamento non viene attivato automaticamente nel mezzo di una scansione. Attivazione reale, aggiornamento dalla versione precedente e uso offline vanno verificati sul telefono prima dell'impiego operativo.
-
-## Struttura
+## Cartelle
 
 ```text
-index.html                 Interfaccia Vue e simboli SVG
-manifest.webmanifest       Metadati di installazione
-sw.js                      Cache e aggiornamenti
-.nojekyll                  Pubblicazione statica
+index.html                 Interfaccia Vue
+manifest.webmanifest       PWA installabile
+sw.js                      Cache/versionamento
+.nojekyll                  GitHub Pages
 assets/
-  css/style.css            Layout, temi e responsive
-  js/app.mjs               UI, NFC, archivio, preferenze e PWA
-  js/core.mjs              Parsing, identità NDEF, CSV/TXT
-  js/sound.mjs             Tre segnali sintetizzati sul dispositivo
-  vendor/                  Vue 3.5.13 locale e licenza MIT
-  icons/                   Icone PWA e favicon
+  css/style.css            Material Design / responsive
+  js/app.mjs               UI, NFC, storico, condivisione, preferenze
+  js/core.mjs              Record NDEF, UID e formati CSV/TXT
+  js/sound.mjs             Conferma, doppione, errore
+  vendor/                  Vue locale con licenza MIT
+  icons/                   Icone PWA
 README.md
 CHANGELOG.md
 TEST-REPORT.md
 ```
 
-Lo ZIP **Sorgenti** contiene gli stessi file e `tests/`. Non occorre una build per nessuno dei due pacchetti. Per modifiche future, aggiorna coerentemente la versione in HTML, import JS, `app.mjs` e `sw.js`.
+Il pacchetto **Sorgenti** contiene anche `tests/`. Non e' previsto alcun processo di build.
 
-## Test ripetibili (solo ZIP Sorgenti)
+## Test
 
-Test unitari, con Node.js 18 o successivo:
+Per gli unit test serve Node.js:
 
 ```sh
-node --test tests/core.test.mjs tests/sound.test.mjs tests/pwa.test.mjs
+node --test tests/*.test.mjs
 ```
 
-Test UI senza rete, con Python e Playwright:
+Per i test UI simulati (browser Chromium e Playwright):
 
 ```sh
-pip install playwright
-playwright install chromium
+python -m pip install playwright
+python -m playwright install chromium
 python tests/browser_smoke.py
 ```
 
-Il test UI usa Vue, DOM e CSS reali, ma simula le API della piattaforma. Non certifica la lettura hardware o la PWA installata. `CHROMIUM_PATH` permette di selezionare un Chromium già installato. Il resoconto e le immagini vengono generati in `qa-output/`.
+I test verificano l'interfaccia e simulano Web NFC, suoni, file e Web Share. **Non sostituiscono il collaudo su un telefono Android con tag fisici e condivisione reale**. Il report e' in `TEST-REPORT.md`.
 
-Per un'anteprima locale manuale puoi servire la cartella con `python -m http.server 8080`. Non aprire `index.html` tramite doppio clic: i moduli JavaScript richiedono un contesto web. Un PC può mostrare interfaccia e storico, ma non diventa un lettore NFC per questo motivo.
+## Riferimenti API
 
-## Documentazione della piattaforma
-
-- [Web NFC e relative limitazioni](https://developer.chrome.com/docs/capabilities/nfc)
-- [Ciclo di vita del service worker](https://web.dev/articles/service-worker-lifecycle)
-- [Screen Wake Lock](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API)
-- [AudioContext e ripresa audio](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/resume)
-- [Configurazione GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
+- Web NFC: https://developer.chrome.com/docs/capabilities/nfc
+- NDEFRecord: https://developer.mozilla.org/en-US/docs/Web/API/NDEFRecord
+- Web Share API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Share_API
+- GitHub Pages: https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site

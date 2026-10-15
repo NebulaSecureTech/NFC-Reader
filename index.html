@@ -10,10 +10,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="NFC Reader">
   <title>NFC Reader</title>
-  <link rel="icon" href="./assets/icons/favicon.svg?v=1.2.0" type="image/svg+xml">
+  <link rel="icon" href="./assets/icons/favicon.svg?v=1.4.0" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="manifest" href="./manifest.webmanifest?v=1.2.0">
-  <link rel="stylesheet" href="./assets/css/style.css?v=1.2.0">
+  <link rel="manifest" href="./manifest.webmanifest?v=1.4.0">
+  <link rel="stylesheet" href="./assets/css/style.css?v=1.4.0">
   <script>
     try {
       const settings = JSON.parse(localStorage.getItem('nfc-reader.settings.v1') || '{}');
@@ -51,6 +51,8 @@
     <symbol id="ico-duplicate" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="3"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3m6-5v4m0 3h.01"/></symbol>
     <symbol id="ico-history" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7m2-4v5l3 2"/></symbol>
     <symbol id="ico-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5m-5 0a8 8 0 0 1 14-5l2 2M4 15l2 2a8 8 0 0 0 14-5"/></symbol>
+    <symbol id="ico-share" viewBox="0 0 24 24"><path d="M12 16V3m-4 4 4-4 4 4M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></symbol>
+    <symbol id="ico-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></symbol>
   </svg>
 
   <div id="app" v-cloak>
@@ -68,7 +70,7 @@
 
       <main class="app-main">
         <section id="panel-reader" v-show="tab === 'reader'" role="tabpanel" aria-labelledby="tab-reader" class="reader-panel" :class="[running ? 'is-running' : '', flash ? 'flash-' + flash : '']">
-          <div class="panel-heading"><span class="eyebrow">SCANSIONE CONTINUA</span><span class="status-chip" :class="{active: running, starting: scanState === 'starting'}"><span class="status-dot"></span>{{ statusLabel }}</span></div>
+          <div class="panel-heading"><span class="eyebrow">{{ singleMode ? 'LETTURA SINGOLA' : 'SCANSIONE CONTINUA' }}</span><span class="status-chip" :class="{active: running, starting: scanState === 'starting'}"><span class="status-dot"></span>{{ statusLabel }}</span></div>
 
           <div class="scan-stage">
             <div class="scanner" :class="{'scanner-active': running}" aria-hidden="true">
@@ -81,16 +83,16 @@
 
           <div class="reader-bottom">
             <div class="stats" aria-label="Riepilogo delle letture">
-              <div><strong>{{ entries.length }}</strong><span>Tag salvati</span></div>
+              <button type="button" class="stat-open" :disabled="!lastEntry" aria-label="Apri dettagli ultimo tag salvato" @click="openLastSaved"><strong>{{ entries.length }}</strong><span>Tag salvati</span></button>
               <div title="Doppioni rilevati dall'apertura dell'app"><strong :class="{'has-duplicates': duplicates}">{{ duplicates }}</strong><span>Doppioni</span></div>
               <div title="Errori NFC dall'apertura dell'app"><strong :class="{'has-errors': errors}">{{ errors }}</strong><span>Errori</span></div>
             </div>
-            <div class="last-card" :class="'last-' + lastCard.kind" role="status" aria-live="polite" aria-atomic="true">
+            <div class="last-card" :class="['last-' + lastCard.kind, {'is-clickable': canOpenLatest}]" :role="canOpenLatest ? 'button' : 'status'" :tabindex="canOpenLatest ? 0 : -1" :aria-label="canOpenLatest ? 'Apri dati del tag appena letto' : undefined" aria-live="polite" aria-atomic="true" @click="openLatestDetail" @keydown.enter="openLatestDetail" @keydown.space.prevent="openLatestDetail">
               <span class="last-icon"><svg class="icon"><use :href="iconFor(lastCard.kind)"/></svg></span>
               <div class="last-text"><div class="last-top"><span>{{ lastCard.title }}</span><time v-if="lastCard.timestamp" :datetime="lastCard.timestamp">{{ formattedTime(lastCard.timestamp) }}</time></div>
                 <strong v-if="lastCard.uid" class="mono" :title="lastCard.uid">{{ lastCard.uid }}</strong>
                 <p v-if="lastCard.message">{{ lastCard.message }}</p>
-              </div>
+              </div><svg v-if="canOpenLatest" class="icon small last-chevron"><use href="#ico-chevron"/></svg>
             </div>
             <button type="button" class="scan-btn" :class="{'stop-btn': running}" :disabled="!running && !canStart" @click="toggleScan"><svg class="icon"><use :href="running ? '#ico-stop' : '#ico-scan'"/></svg>{{ running ? (scanState === 'starting' ? 'Annulla attivazione' : 'Ferma scansione') : 'Avvia scansione' }}</button>
             <p class="scan-hint">{{ readerHint }}</p>
@@ -98,7 +100,13 @@
         </section>
 
         <section id="panel-history" v-show="tab === 'history'" role="tabpanel" aria-labelledby="tab-history" class="history-panel">
-          <div class="history-heading"><div><span class="eyebrow">IL TUO ARCHIVIO</span><h1>Storico <span class="count-badge">{{ entries.length }}</span></h1></div><button type="button" class="icon-btn" :disabled="!entries.length || blocked" aria-label="Svuota storico" title="Svuota storico" @click="askClear"><svg class="icon"><use href="#ico-trash"/></svg></button></div>
+          <div class="history-heading">
+            <div class="history-heading-title"><span class="eyebrow">IL TUO ARCHIVIO</span><h1>Storico <span class="count-badge">{{ entries.length }}</span></h1></div>
+            <div class="history-heading-actions">
+              <button type="button" class="history-share" :disabled="!entries.length" aria-label="Esporta o condividi lo storico" title="Esporta o condividi" @click="openExport"><svg class="icon small"><use href="#ico-share"/></svg><span>Condividi</span></button>
+              <button type="button" class="icon-btn" :disabled="!entries.length || blocked" aria-label="Svuota storico" title="Svuota storico" @click="askClear"><svg class="icon"><use href="#ico-trash"/></svg></button>
+            </div>
+          </div>
           <div v-if="running" class="history-scan-status"><span><span class="status-dot"></span>Scansione {{ scanState === 'starting' ? 'in attivazione' : 'attiva' }}</span><button type="button" class="text-btn" @click="stopScan">Ferma</button></div>
           <div class="searchbox"><svg class="icon small"><use href="#ico-search"/></svg><input type="search" v-model="search" @input="visibleLimit = 50" placeholder="Cerca UID o contenuto" aria-label="Cerca nello storico" autocomplete="off" spellcheck="false"><button v-if="search" type="button" class="icon-btn search-clear" aria-label="Cancella ricerca" @click="search = ''"><svg class="icon small"><use href="#ico-close"/></svg></button></div>
 
@@ -116,10 +124,6 @@
             </template>
           </div>
 
-          <div class="export-bar">
-            <div class="export-options"><span>Esporta tutti <small>{{ entries.length }} tag</small></span><label class="number-option"><input type="checkbox" v-model="includeNumber" @change="saveSettings">Con progressivo</label></div>
-            <div class="export-buttons"><button type="button" class="btn btn-primary" :disabled="!entries.length" @click="download('csv')"><svg class="icon small"><use href="#ico-download"/></svg>Esporta CSV</button><button type="button" class="btn btn-secondary" :disabled="!entries.length" @click="download('txt')"><svg class="icon small"><use href="#ico-download"/></svg>Esporta TXT</button></div>
-          </div>
         </section>
       </main>
 
@@ -131,12 +135,13 @@
 
     <dialog ref="dialog" class="app-dialog" :class="{'settings-dialog': modal === 'settings'}" aria-labelledby="dialog-title" @cancel.prevent="closeDialog" @click="onBackdrop" @keydown="onDialogKeydown">
       <div class="dialog-wrap">
-        <header class="dialog-heading"><h2 id="dialog-title">{{ {settings: 'Impostazioni', detail: 'Dettaglio tag', delete: 'Eliminare questo tag?', clear: 'Svuotare lo storico?', repair: 'Recupera archivio'}[modal] || '' }}</h2><button type="button" class="icon-btn" aria-label="Chiudi finestra" @click="closeDialog"><svg class="icon"><use href="#ico-close"/></svg></button></header>
+        <header class="dialog-heading"><h2 id="dialog-title">{{ {settings: 'Impostazioni', export: 'Esporta e condividi', detail: 'Dettaglio tag', delete: 'Eliminare questo tag?', clear: 'Svuotare lo storico?', repair: 'Recupera archivio'}[modal] || '' }}</h2><button type="button" class="icon-btn" aria-label="Chiudi finestra" @click="closeDialog"><svg class="icon"><use href="#ico-close"/></svg></button></header>
 
         <template v-if="modal === 'settings'">
           <div class="segmented settings-tabs" role="group" aria-label="Sezioni impostazioni"><button type="button" :aria-pressed="settingsTab === 'reading'" :class="{selected: settingsTab === 'reading'}" @click="settingsTab = 'reading'">Lettura</button><button type="button" :aria-pressed="settingsTab === 'app'" :class="{selected: settingsTab === 'app'}" @click="settingsTab = 'app'">App</button></div>
           <div class="dialog-content settings-content">
             <div v-if="settingsTab === 'reading'" class="settings-reading">
+              <label class="setting-row mode-setting"><span class="setting-icon"><svg class="icon"><use href="#ico-scan"/></svg></span><span><strong>Lettura singola</strong><small>{{ running ? 'Ferma la scansione per cambiare modalità' : 'Una lettura, stop e scheda dettagli automatica' }}</small></span><input type="checkbox" role="switch" class="switch" v-model="singleMode" :disabled="running" @change="onScanModeChange" aria-label="Lettura singola"></label>
               <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-volume"/></svg></span><span><strong>Suono di lettura</strong><small>Conferma un nuovo tag salvato</small></span><input type="checkbox" role="switch" class="switch" v-model="soundEnabled" @change="onSettingsChange" aria-label="Suono di lettura"></label>
               <label class="setting-row"><span class="setting-icon"><svg class="icon"><use href="#ico-duplicate"/></svg></span><span><strong>Suoni di avviso</strong><small>Segnali distinti per doppioni ed errori</small></span><input type="checkbox" role="switch" class="switch" v-model="alertSoundEnabled" @change="onSettingsChange" aria-label="Suoni di avviso"></label>
               <div class="sound-controls"><label class="volume-label" for="volume">Volume <span>{{ volume }}%</span></label><input id="volume" type="range" min="0" max="100" step="5" v-model.number="volume" @change="onSettingsChange" aria-label="Volume dei suoni"><div class="sound-tests" role="group" aria-label="Prova i suoni"><button type="button" @click="testSound('success')" aria-label="Prova suono lettura"><svg class="icon tiny"><use href="#ico-check"/></svg>Lettura</button><button type="button" @click="testSound('duplicate')" aria-label="Prova suono doppione"><svg class="icon tiny"><use href="#ico-duplicate"/></svg>Doppione</button><button type="button" @click="testSound('error')" aria-label="Prova suono errore"><svg class="icon tiny"><use href="#ico-info"/></svg>Errore</button></div></div>
@@ -155,9 +160,68 @@
           <footer class="settings-footer"><span>NFC Reader</span><span>v{{ version }}</span></footer>
         </template>
 
+        <template v-else-if="modal === 'export'">
+          <div class="dialog-content export-dialog-content">
+            <div class="export-intro"><span class="export-intro-icon"><svg class="icon"><use href="#ico-list"/></svg></span><div><strong>{{ entries.length }} {{ entries.length === 1 ? 'tag' : 'tag' }} nello storico</strong><p>L'intero storico, anche se hai attivato una ricerca.</p></div></div>
+            <h3 class="export-label">FORMATO FILE</h3>
+            <div class="segmented export-formats" role="group" aria-label="Formato di esportazione">
+              <button type="button" data-autofocus :class="{selected: exportFormat === 'csv'}" :aria-pressed="exportFormat === 'csv'" @click="exportFormat = 'csv'"><svg class="icon small"><use href="#ico-file"/></svg>CSV</button>
+              <button type="button" :class="{selected: exportFormat === 'txt'}" :aria-pressed="exportFormat === 'txt'" @click="exportFormat = 'txt'"><svg class="icon small"><use href="#ico-file"/></svg>TXT</button>
+            </div>
+            <p class="export-format-help">{{ exportFormat === 'csv' ? 'Tabella con UID, contenuto e data/ora; compatibile con Excel.' : 'Elenco di UID, uno per riga (o contenuto se UID assente).' }}</p>
+            <label class="export-number-option"><span><strong>Numero progressivo</strong><small>{{ exportFormat === 'csv' ? 'Aggiungi la colonna Numero' : 'Numera le righe del file' }}</small></span><input type="checkbox" role="switch" class="switch" v-model="includeNumber" @change="saveSettings" aria-label="Con progressivo"></label>
+            <p class="export-privacy"><svg class="icon tiny"><use href="#ico-shield"/></svg>I dati vengono generati sul dispositivo. La condivisione usa le app disponibili sul telefono.</p>
+          </div>
+          <footer class="dialog-actions export-dialog-actions">
+            <button type="button" class="btn btn-secondary" :aria-label="'Scarica ' + exportFormat.toUpperCase()" @click="download(exportFormat)"><svg class="icon small"><use href="#ico-download"/></svg>Scarica</button>
+            <button type="button" class="btn btn-primary" :aria-label="'Condividi ' + exportFormat.toUpperCase()" @click="shareArchive"><svg class="icon small"><use href="#ico-share"/></svg>Condividi</button>
+          </footer>
+        </template>
+
         <template v-else-if="modal === 'detail' && detail">
-          <div class="dialog-content detail-content"><span class="section-label">UID</span><p class="detail-uid mono">{{ detail.uid || 'Non disponibile' }}</p><span class="section-label">DATA E ORA</span><p>{{ formattedTimestamp(detail.timestamp) }}</p><span class="section-label">ANTEPRIMA NDEF</span><p class="ndef-content">{{ detail.content || 'Nessun contenuto testuale.' }}</p><small class="muted">Anteprima testuale fino a 600 caratteri. Il contenuto non viene eseguito.</small></div>
-          <footer class="dialog-actions"><button type="button" class="btn btn-danger-soft" :disabled="blocked" @click="askDelete"><svg class="icon small"><use href="#ico-trash"/></svg>Elimina</button><button type="button" class="btn btn-primary" :disabled="!detail.uid" @click="copyUid(detail)"><svg class="icon small"><use href="#ico-copy"/></svg>Copia UID</button></footer>
+          <div class="dialog-content detail-content">
+            <div v-if="detailUnsaved" class="unsaved-note"><svg class="icon small"><use href="#ico-info"/></svg><span>{{ pendingSave ? 'Salvataggio non riuscito: questo tag è solo in memoria. Esporta lo storico prima di chiudere.' : 'Tag già presente: questa lettura non è stata aggiunta allo storico.' }}</span></div>
+            <div class="detail-overview">
+              <span class="detail-kicker">TAG NFC</span>
+              <p class="detail-uid mono">{{ detail.uid || 'UID non disponibile' }}</p>
+              <div class="detail-time"><svg class="icon tiny"><use href="#ico-history"/></svg>{{ formattedTimestamp(detail.timestamp) }}</div>
+            </div>
+            <div class="detail-grid">
+              <div><span>Record NDEF</span><strong>{{ Array.isArray(detail.records) ? detail.records.length : '—' }}</strong></div>
+              <div><span>Payload NDEF</span><strong>{{ Array.isArray(detail.records) ? (detail.ndefBytes || 0) + ' byte' : '—' }}</strong></div>
+            </div>
+            <section class="detail-section">
+              <h3>Contenuto leggibile</h3>
+              <p class="ndef-content">{{ detail.content || 'Nessun contenuto testuale riconosciuto.' }}</p>
+            </section>
+            <details class="records-accordion" :key="detailAccordionVersion">
+              <summary class="records-accordion-summary">
+                <span class="accordion-title"><svg class="icon small"><use href="#ico-database"/></svg>Record e dati tecnici</span>
+                <span class="accordion-trailing"><span class="detail-count">{{ Array.isArray(detail.records) ? detail.records.length : '—' }}</span><svg class="icon small accordion-chevron"><use href="#ico-chevron"/></svg></span>
+              </summary>
+              <div class="records-accordion-body">
+                <template v-if="Array.isArray(detail.records)">
+                <p v-if="!detail.records.length" class="record-empty">Il tag non contiene record NDEF.</p>
+                <article v-for="(record, index) in detail.records" :key="index" class="ndef-record">
+                  <div class="record-heading"><span>RECORD {{ String(index + 1).padStart(2, '0') }}</span><strong>{{ record.recordType || 'unknown' }}</strong></div>
+                  <dl class="record-fields">
+                    <div v-if="record.mediaType"><dt>MIME</dt><dd>{{ record.mediaType }}</dd></div>
+                    <div v-if="record.id"><dt>ID record</dt><dd>{{ record.id }}</dd></div>
+                    <div v-if="record.lang"><dt>Lingua</dt><dd>{{ record.lang }}</dd></div>
+                    <div v-if="record.encoding"><dt>Codifica</dt><dd>{{ record.encoding }}</dd></div>
+                    <div><dt>Dimensione payload</dt><dd>{{ record.bytes }} byte</dd></div>
+                  </dl>
+                  <div v-if="record.decoded" class="record-text"><span>CONTENUTO DECODIFICATO</span><pre>{{ record.decoded }}</pre></div>
+                  <details v-if="record.hex" class="record-hex"><summary>Mostra payload HEX <svg class="icon tiny"><use href="#ico-chevron"/></svg></summary><pre>{{ record.hex.match(/.{1,2}/g)?.join(' ') }}</pre></details>
+                  <div v-if="record.children?.length" class="nested-records"><span>RECORD ANNIDATI</span><div v-for="(child, j) in record.children" :key="j" class="nested-record"><strong>{{ child.recordType }}</strong><small>{{ child.bytes }} byte · {{ child.mediaType || child.lang || 'NDEF' }}</small><pre v-if="child.decoded">{{ child.decoded }}</pre><details v-if="child.hex"><summary>HEX annidato</summary><pre>{{ child.hex.match(/.{1,2}/g)?.join(' ') }}</pre></details></div></div>
+                </article>
+                </template>
+                <div v-else class="record-empty legacy-records"><svg class="icon small"><use href="#ico-info"/></svg><span>Questo tag è stato salvato con una versione precedente. I dati tecnici completi saranno disponibili dopo una nuova lettura.</span></div>
+                <small class="detail-disclaimer">Sono mostrati soltanto i dati NDEF accessibili dal browser. Tecnologia del chip, memoria totale e aree protette non sono disponibili tramite Web NFC.</small>
+              </div>
+            </details>
+          </div>
+          <footer class="dialog-actions detail-actions"><button v-if="!detailUnsaved" type="button" class="btn btn-danger-soft detail-delete" :disabled="blocked" aria-label="Elimina tag" title="Elimina tag" @click="askDelete"><svg class="icon small"><use href="#ico-trash"/></svg></button><button type="button" class="btn btn-secondary" :disabled="!detail.uid" @click="copyUid(detail)"><svg class="icon small"><use href="#ico-copy"/></svg>Copia UID</button><button type="button" class="btn btn-primary" @click="shareTag"><svg class="icon small"><use href="#ico-share"/></svg>Condividi</button></footer>
         </template>
 
         <template v-else-if="modal === 'clear' || modal === 'delete'">
@@ -175,7 +239,7 @@
     <div v-if="toast && !modal" class="snackbar" :class="'toast-' + toast.tone" role="status" aria-live="polite"><svg class="icon small"><use :href="iconFor(toast.tone)"/></svg><span>{{ toast.text }}</span></div>
   </div>
   <noscript><p>Abilita JavaScript per usare NFC Reader.</p></noscript>
-  <script src="./assets/vendor/vue.global.js?v=1.2.0"></script>
-  <script type="module" src="./assets/js/app.mjs?v=1.2.0"></script>
+  <script src="./assets/vendor/vue.global.js?v=1.4.0"></script>
+  <script type="module" src="./assets/js/app.mjs?v=1.4.0"></script>
 </body>
 </html>

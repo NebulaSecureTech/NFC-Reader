@@ -1,28 +1,27 @@
-# Verifiche della versione 1.2.0
+# Report test - NFC Reader v1.4.0
 
-Data: 14 ottobre 2026. Revisione eseguita nel contenitore di sviluppo, non su smartphone fisico.
+**Ambiente:** Node.js 22, Chromium headless tramite Playwright, Vue 3/DOM/CSS reali con Web NFC/Web Share, audio e storage simulati.
 
-## Esito automatico
+| Verifica | Esito |
+| --- | --- |
+| Test unitari e PWA simulate | **36 / 36 superati** |
+| Scenari UI Chromium | **37 / 37 superati** |
+| Condividi in alto nello Storico | Visibile anche a **320px**, senza sovrapposizioni; pulsantiera inferiore rimossa |
+| Modale export | CSV/TXT, progressivo, Scarica e Condividi; azioni raggiungibili su 320x568 |
+| Dati in esportazione | Intero registro, anche con ricerca applicata; fallback download se condivisione nativa assente |
+| Web Share (mock) | CSV e TXT come file, condivisione tag e fallback |
+| Record tecnici | Accordion nativo chiuso di default, HEX annidato espandibile; riapertura di un tag reimposta lo stato |
+| Compatibilita archivio precedente | Preservate le stesse chiavi localStorage |
+| Lettore non scorre | 12 viewport da 320 a 1280 px, portrait e landscape |
+| Errore JavaScript nei test browser | Nessuno |
+| NFC fisico su Android e condivisione nativa reale | **Da verificare su dispositivo** |
+| Installazione PWA/offline su GitHub Pages reale | **Da verificare sul sito pubblicato** |
 
-**32 test unitari superati, 0 fallimenti.** Runtime Node.js 22.16.0. Coprono parsing NDEF/UTF-16, UID, gestione payload anonimi, ripristino, collisioni di ID, esportazioni con/senza progressivo, protezione CSV da formule, pattern audio, assenza di AudioContext, volume zero, manifest e logica del service worker con cache simulata.
+Il test browser usa Vue, HTML e CSS reali in Chromium, ma gli eventi NFC e le chiamate piattaforma sono simulati: non sostituisce un collaudo fisico. Il service worker e' controllato da test unitari con precache simulata; nell'ambiente di sviluppo la navigazione HTTP localhost e' bloccata, per cui non e' stato possibile eseguire un vero collaudo offline end-to-end.
 
-**23 scenari browser superati, nessun errore JavaScript rilevato durante le prove.** Motore Chromium 144.0.7559.96. Interfaccia Vue, DOM e CSS effettivi; API NFC, archiviazione, audio, download, vibrazione e wake lock simulate per riprodurre eventi ed errori in modo controllato.
+Esecuzione dei test inclusi nello ZIP Sorgenti:
 
-Le verifiche browser includono scansione continua, doppioni con filtro attivo/disattivo, soppressione degli eventi ravvicinati, errori NDEF, permesso negato, eventi tardivi dopo Stop/Annulla, passaggio di tab, preferenze, export anche con ricerca attiva, dettaglio e cancellazioni, archivio corrotto, memoria piena, ripristino dopo un errore transitorio, cambio scheda, visibilità e focus nei menu.
-
-**Layout verificato in 12 viewport:** 320x568, 360x640, 360x740, 375x667, 390x844, 412x915, 430x932, 768x1024, 1280x800, 667x375, 844x390 e 568x320. Sono stati controllati stato iniziale, tag acquisito ed errore, assenza di scroll della pagina e sovrapposizioni tra indicatore, testo, riepilogo, comandi e navigazione. Lo Storico è stato verificato con 120 elementi; il limite applicativo con 5.000 elementi.
-
-I test non sono un audit di sicurezza o una certificazione di produzione. In particolare il test della cache è una simulazione della logica del service worker, non una prova completa della PWA installata.
-
-## Collaudo da eseguire prima dell'uso operativo
-
-1. Pubblica l'intero ZIP su HTTPS, aprilo nel Chrome Android destinato all'uso e verifica la versione nelle impostazioni.
-2. Autorizza NFC e acquisisci almeno 10 tag NDEF consecutivi. Verifica UID, numero di righe, ordine e persistenza dopo riapertura.
-3. Rileggi un tag dopo averlo allontanato per oltre un secondo. Verifica esito ambra, suono di doppione e riga non aggiunta. Ripeti disattivando il filtro.
-4. Prova i tre segnali dalle impostazioni, verifica il volume multimediale del telefono e riproduci una lettura non riuscita, quando il dispositivo genera l'evento relativo.
-5. Nello Storico genera CSV e TXT con e senza progressivo, apri i file scaricati e controlla valori, sequenza ed eventuali zeri iniziali durante l'importazione in altri programmi.
-6. Verifica Stop, passaggio in background, riapertura, schermo acceso e le eventuali limitazioni del risparmio energetico.
-7. Installa la PWA, attendi il caricamento online completo, chiudila e riaprila senza connessione per verificare l'interfaccia offline.
-8. Su una copia del sito verifica l'aggiornamento dalla 1.1.0, mantenendo alcuni tag di prova, e l'avviso di nuova versione. Non cancellare i dati del sito per forzare la cache.
-
-NFC fisico, resa acustica sul telefono, installazione Android, comportamento offline reale e migrazione del service worker precedente non sono stati verificati su hardware in questa sessione.
+```sh
+node --test tests/*.test.mjs
+python tests/browser_smoke.py
+```

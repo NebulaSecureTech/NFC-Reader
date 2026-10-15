@@ -1,10 +1,10 @@
 import {
   MAX_ENTRIES, REPEAT_DELAY_MS, parseNfcReading, restoreEntries, normalizeUid,
-  formattedTime, formattedShortDate, formattedTimestamp, exportCsv, exportTxt, nfcErrorMessage,
-} from './core.mjs?v=1.2.0';
-import {prepareAudio, playSound} from './sound.mjs?v=1.2.0';
+  formattedTime, formattedShortDate, formattedTimestamp, exportCsv, exportTxt, nfcErrorMessage, shareTagText,
+} from './core.mjs?v=1.4.0';
+import {prepareAudio, playSound} from './sound.mjs?v=1.4.0';
 
-const VERSION = '1.2.0';
+const VERSION = '1.4.0';
 // Retain the original keys: upgrading in the same origin preserves the archive.
 const STORAGE_ENTRIES = 'nfc-reader.entries.v1';
 const STORAGE_SETTINGS = 'nfc-reader.settings.v1';
@@ -71,8 +71,14 @@ if (!window.Vue) {
         scanState: 'idle',
         hidden: document.hidden,
         modal: '',
+        exportFormat: 'csv',
+        detailAccordionVersion: 0,
         settingsTab: 'reading',
         detailId: '',
+        detailPreview: null,
+        detailUnsaved: false,
+        latestRead: null,
+        latestUnsaved: false,
         feedback: null,
         flash: '',
         duplicates: 0,
@@ -87,6 +93,7 @@ if (!window.Vue) {
         volume: Number.isFinite(savedSettings.volume) ? Math.max(0, Math.min(100, savedSettings.volume)) : 65,
         vibrationEnabled: savedSettings.vibrationEnabled !== false,
         ignoreDuplicates: savedSettings.ignoreDuplicates !== false,
+        singleMode: savedSettings.singleMode === true,
         keepScreenAwake: savedSettings.keepScreenAwake === true,
         includeNumber: savedSettings.includeNumber !== false,
         theme: ['auto', 'light', 'dark'].includes(savedSettings.theme) ? savedSettings.theme : 'auto',
@@ -114,19 +121,19 @@ if (!window.Vue) {
         if (this.blocked) return 'Controlla l\u2019archivio';
         if (this.entries.length >= MAX_ENTRIES) return 'Archivio completo';
         if (this.scanState === 'starting') return 'Attivazione NFC';
-        return this.running ? 'Avvicina un tag' : 'Pronto alla lettura';
+        return this.running ? 'Avvicina un tag' : (this.singleMode ? 'Lettura singola' : 'Pronto alla lettura');
       },
       readerSubtitle() {
         if (!this.supported) return 'Apri questa app con Chrome su Android.';
         if (this.blocked) return 'Esporta i tag e risolvi l\u2019avviso in alto.';
         if (this.entries.length >= MAX_ENTRIES) return 'Esporta e svuota lo storico per continuare.';
         if (this.scanState === 'starting') return 'Consenti l\u2019accesso NFC, se richiesto.';
-        return this.running ? 'Un tag dopo l\u2019altro, senza premere altro.' : 'Premi Avvia per iniziare la raccolta.';
+        return this.running ? (this.singleMode ? 'Dopo la lettura vedrai tutti i dati.' : 'Un tag dopo l\u2019altro, senza premere altro.') : (this.singleMode ? 'Una lettura alla volta, con dettagli automatici.' : 'Premi Avvia per iniziare la raccolta.');
       },
       readerHint() {
         if (!this.supported) return 'NFC attivo, sito HTTPS e tag NDEF.';
         if (this.running && this.keepScreenAwake && this.wakeActive) return 'Schermo mantenuto acceso durante la lettura.';
-        return this.running ? 'Tieni l\u2019app visibile e lo schermo sbloccato.' : 'Le letture restano salvate su questo dispositivo.';
+        return this.running ? 'Tieni l\u2019app visibile e lo schermo sbloccato.' : (this.singleMode ? 'Si fermerà automaticamente dopo un tag.' : 'Le letture restano salvate su questo dispositivo.');
       },
       lastEntry() { return this.entries.at(-1) || null; },
       entryKeys() { return new Set(this.entries.map(e => e.key)); },
@@ -139,7 +146,8 @@ if (!window.Vue) {
       },
       visibleEntries() { return this.filteredEntries.slice(0, this.visibleLimit); },
       moreEntries() { return this.filteredEntries.length > this.visibleLimit; },
-      detail() { return this.entries.find(e => e.id === this.detailId) || null; },
+      detail() { return this.detailPreview || this.entries.find(e => e.id === this.detailId) || null; },
+      canOpenLatest() { return this.feedback?.kind !== 'error' && !!(this.latestRead || this.lastEntry); },
       lastCard() {
         if (this.feedback) return this.feedback;
         if (this.lastEntry) return {kind: 'neutral', title: 'Ultimo tag salvato', uid: this.lastEntry.uid,
@@ -221,6 +229,8 @@ if (!window.Vue) {
         lastEvent = {key: '', at: -Infinity};
         lastErrorAt = -Infinity;
         this.feedback = null;
+        this.latestRead = null;
+        this.latestUnsaved = false;
         const controller = new AbortController();
         scanController = controller;
         this.scanState = 'starting';
@@ -261,6 +271,10 @@ if (!window.Vue) {
         try { tag = parseNfcReading(event); }
         catch (error) { this.reportReadError(error instanceof RangeError ? error.message : 'Contenuto NDEF non leggibile.', true); return; }
         if (!tag) { this.reportReadError('Tag rilevato, ma senza UID o dati NDEF utilizzabili.', true); return; }
+        // One-shot mode accepts exactly one valid reading. Stop the reader BEFORE
+        // any storage or modal work, so queued NFC events cannot add further tags.
+        const oneShot = this.singleMode;
+        if (oneShot) this.stopScan();
         const now = Date.now();
         const isBurst = lastEvent.key === tag.key && now - lastEvent.at < REPEAT_DELAY_MS;
         lastEvent = {key: tag.key, at: now};
@@ -269,7 +283,10 @@ if (!window.Vue) {
         if (duplicate) {
           this.duplicates++;
           if (this.ignoreDuplicates) {
+            this.latestRead = tag;
+            this.latestUnsaved = true;
             this.emitFeedback('duplicate', 'Tag gi\u00e0 presente', 'Doppione non aggiunto allo storico.', tag);
+            if (oneShot) this.openDetail(tag, true);
             return;
           }
         }
@@ -278,15 +295,20 @@ if (!window.Vue) {
           this.reportReadError('Limite di 5.000 tag. Esporta e svuota lo storico.');
           return;
         }
-        this.entries = [...this.entries, {...tag, id: newId()}];
+        const newEntry = {...tag, id: newId()};
+        this.entries = [...this.entries, newEntry];
+        this.latestRead = newEntry;
+        this.latestUnsaved = false;
         // A failed save retains the read in memory, stops NFC, and never plays success.
         if (!this.persistEntries()) {
           this.stopScan();
           this.reportReadError('Tag solo in memoria: esporta lo storico prima di chiudere.');
+          if (oneShot) this.openDetail(newEntry, true);
           return;
         }
         this.emitFeedback(duplicate ? 'duplicate' : 'success', duplicate ? 'Doppione salvato' : 'Tag acquisito',
           duplicate ? 'Filtro duplicati disattivato.' : (tag.uid ? '' : 'UID assente: salvato il contenuto NDEF.'), tag);
+        if (oneShot) this.openDetail(newEntry);
       },
       persistEntries() {
         if (this.externalConflict) return false;
@@ -340,6 +362,8 @@ if (!window.Vue) {
           this.entries = restored;
           this.storageProblem = restored.length !== parsed.length ? 'corrupt' : '';
           this.feedback = null;
+          this.latestRead = null;
+          this.latestUnsaved = false;
           lastEvent = {key: '', at: -Infinity};
           if (this.modal !== 'settings') this.closeDialog();
           this.notify('Archivio aggiornato da un\u2019altra scheda. Scansione fermata.');
@@ -362,10 +386,14 @@ if (!window.Vue) {
         try {
           localStorage.setItem(STORAGE_SETTINGS, JSON.stringify({
             soundEnabled: this.soundEnabled, alertSoundEnabled: this.alertSoundEnabled, volume: this.volume,
-            vibrationEnabled: this.vibrationEnabled, ignoreDuplicates: this.ignoreDuplicates,
+            vibrationEnabled: this.vibrationEnabled, ignoreDuplicates: this.ignoreDuplicates, singleMode: this.singleMode,
             keepScreenAwake: this.keepScreenAwake, includeNumber: this.includeNumber, theme: this.theme,
           }));
         } catch (_) { this.notify('Preferenze non salvate su questo dispositivo.', 'error'); }
+      },
+      onScanModeChange() {
+        if (this.running) this.stopScan();
+        this.saveSettings();
       },
       onSettingsChange() {
         this.saveSettings();
@@ -429,12 +457,14 @@ if (!window.Vue) {
       closeDialog() {
         this.$refs.dialog?.close();
         this.modal = '';
+        this.detailPreview = null;
+        this.detailUnsaved = false;
         returnFocus?.focus?.({preventScroll: true});
       },
       onDialogKeydown(event) {
         if (event.key !== 'Tab') return;
         const dialog = this.$refs.dialog;
-        const focusable = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]')]
+        const focusable = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), summary, [tabindex="0"]')]
           .filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
         if (!focusable.length) return;
         const first = focusable[0];
@@ -447,18 +477,84 @@ if (!window.Vue) {
       },
       onBackdrop(event) { if (event.target === this.$refs.dialog) this.closeDialog(); },
       openSettings() { this.settingsTab = 'reading'; this.openDialog('settings'); },
-      openDetail(entry) { this.detailId = entry.id; this.openDialog('detail'); },
+      openExport() { if (!this.entries.length) return; this.exportFormat = 'csv'; this.openDialog('export'); },
+      openDetail(entry, unsaved = false) {
+        if (!entry) return;
+        this.detailId = entry.id || '';
+        this.detailPreview = unsaved ? entry : null;
+        this.detailUnsaved = unsaved;
+        this.detailAccordionVersion++; // Reset native <details> each time a tag is opened.
+        this.openDialog('detail');
+      },
+      openLatestDetail() {
+        if (!this.canOpenLatest) return;
+        this.openDetail(this.latestRead || this.lastEntry, this.latestRead ? this.latestUnsaved : false);
+      },
+      openLastSaved() { if (this.lastEntry) this.openDetail(this.lastEntry); },
+      async shareTag() {
+        const entry = this.detail;
+        if (!entry) return;
+        const text = shareTagText(entry);
+        if (typeof navigator.share === 'function') {
+          try {
+            // Native share() must run directly inside the tap handler.
+            await navigator.share({title: 'NFC Reader · Tag NFC', text});
+            return;
+          } catch (error) {
+            if (error?.name === 'AbortError') return;
+          }
+        }
+        try {
+          await navigator.clipboard.writeText(text);
+          this.notify('Dettagli copiati: ora puoi incollarli.', 'success');
+        } catch (_) {
+          downloadBlob(text, 'text/plain;charset=utf-8', fileName('txt'));
+          this.notify('Condivisione non disponibile: dettagli scaricati in TXT.');
+        }
+      },
+      async shareArchive() {
+        const format = this.exportFormat;
+        if (!this.entries.length || !['csv', 'txt'].includes(format)) return;
+        const contents = format === 'csv' ? exportCsv(this.entries, this.includeNumber) : exportTxt(this.entries, this.includeNumber);
+        const mime = format === 'csv' ? 'text/csv;charset=utf-8' : 'text/plain;charset=utf-8';
+        const name = fileName(format);
+        try {
+          // share() is called in the button handler, without awaiting other work.
+          if (typeof navigator.share === 'function') {
+            if (typeof File === 'function' && typeof navigator.canShare === 'function') {
+              const file = new File([contents], name, {type: mime});
+              if (navigator.canShare({files: [file]})) {
+                await navigator.share({files: [file], title: 'NFC Reader · Storico NFC'});
+                return;
+              }
+            }
+            // Some Android targets only accept text; limit the size for reliability.
+            if (contents.length <= 12000) {
+              await navigator.share({title: 'NFC Reader · Storico NFC', text: contents});
+              return;
+            }
+          }
+        } catch (error) {
+          if (error?.name === 'AbortError') return; // User cancelled the system share sheet.
+        }
+        try {
+          downloadBlob(contents, mime, name);
+          this.notify('Condivisione non disponibile: file ' + format.toUpperCase() + ' scaricato.');
+        } catch (_) { this.notify('Impossibile condividere o scaricare il file.', 'error'); }
+      },
       async copyUid(entry) {
         if (!entry?.uid) return;
         try { await navigator.clipboard.writeText(entry.uid); this.notify('UID copiato', 'success'); }
         catch (_) { this.notify('Copia non disponibile. Seleziona l\u2019UID dal dettaglio.', 'error'); }
       },
-      askDelete() { if (this.blocked) return; this.stopScan(); this.openDialog('delete'); },
+      askDelete() { if (this.blocked || this.detailUnsaved) return; this.stopScan(); this.openDialog('delete'); },
       deleteEntry() {
         if (this.blocked) return;
         this.entries = this.entries.filter(e => e.id !== this.detailId);
         lastEvent = {key: '', at: -Infinity};
         this.feedback = null;
+        this.latestRead = null;
+        this.latestUnsaved = false;
         this.closeDialog();
         if (this.persistEntries()) this.notify('Tag eliminato');
         else this.notify('Eliminazione non salvata: controlla l\u2019archivio.', 'error');
@@ -474,6 +570,8 @@ if (!window.Vue) {
         this.search = '';
         this.visibleLimit = PAGE_SIZE;
         this.feedback = null;
+        this.latestRead = null;
+        this.latestUnsaved = false;
         this.duplicates = 0;
         this.errors = 0;
         lastEvent = {key: '', at: -Infinity};
